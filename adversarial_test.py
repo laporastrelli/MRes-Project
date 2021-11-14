@@ -22,7 +22,7 @@ from absl import flags
 from utils.get_model import get_model
 
 '''
-    Given the model we want to:
+    Given a trained model we want to:
     - generate adversarial examples
     - test each model on adversarial examples
     - carry out cross-mode testing
