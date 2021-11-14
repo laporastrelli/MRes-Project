@@ -131,3 +131,5 @@ dmypy.json
 # Folders
 runs/
 deltas/
+logs/
+not_in_use/
