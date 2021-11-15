@@ -10,6 +10,7 @@ import numpy as np
 import os
 import time 
 import torchvision.models as models
+import pandas as pd
 
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -20,21 +21,23 @@ from utils import train_utils, test_utils, get_model, utils_flags, load_data
 from absl import app
 from absl import flags
 
+colums = ['Model', 'Dataset', 'Batch-Normalization', 
+          'Training Mode', 'Test Accuracy', 'Attack',
+          'Epsilon-Budget', 'Adversarial Test Accuracy', 'Transfer adv. Test Accuracy']
 
-def main(argv):
-    
-    del argv
+
+def train_and_test():
 
     FLAGS = flags.FLAGS
+
+    # list to store the results to append to df
+    to_df = []
 
     # choose device
     device = torch.device(FLAGS.device if torch.cuda.is_available() else "cpu")
 
-    # dataset download decision
-    download = False
-
     # load dataset
-    train_loader, test_loader = load_data.get_data(FLAGS.dataset_path, FLAGS.dataset)
+    train_loader, test_loader = load_data.get_data()
     
     # create run name
     model_name = FLAGS.model_name
@@ -42,15 +45,16 @@ def main(argv):
     dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")
     run_name = model_name + '_' + dt_string
 
-    path_to_logs = 'logs/adv/' + model_name + '/'
+    to_df.append(dt_string)
+
     # create logs filename
+    path_to_logs = 'logs/adv/' + model_name + '/'
     if not os.path.isdir(path_to_logs):
         os.mkdir(path_to_logs)
-
     logs_filename = path_to_logs + run_name  + ".txt"
     f = open(logs_filename, "a")
 
-    # create run name
+    # create run name (Tensorboard)
     writer = SummaryWriter('./runs/' + run_name)
 
     # set paths
@@ -82,6 +86,9 @@ def main(argv):
         # test model
         test_acc = test_utils.test(net, PATH_to_model, test_loader, device)
 
+        # write results to list
+        to_df.append(test_acc)
+
         # write results
         f.write("Test Accuracy: " + str(test_acc) + "\n")  
 
@@ -95,6 +102,10 @@ def main(argv):
             np.save(np.array(adv_test_acc), path_to_logs + dt_string + '.npy')
         else:
             f.write("Adversarial Test Accuracy: " + str(adv_test_acc) + "\n")
+        
+        # write results to list
+        if FLAGS.adversarial_test:
+            to_df.append(adv_test_acc)
     
     f.close()
 
@@ -130,6 +141,9 @@ def main(argv):
         # test model
         test_acc = test_utils.test(net, PATH_to_model, test_loader, device)
 
+        # write results to list
+        to_df.append(test_acc)
+
         # save results
         f.write("Test Accuracy: " + str(test_acc) +"\n")
 
@@ -142,8 +156,11 @@ def main(argv):
             np.save(np.array(adv_test_acc), path_to_logs + dt_string + '.npy')
         else:
             f.write("Adversarial Test Accuracy: " + str(adv_test_acc) + "\n")
+        
+        # write results to list
+        if FLAGS.adversarial_test:
+            to_df.append(adv_test_acc)
     
     f.close()
 
-if __name__ == '__main__':
-    app.run(main)
+    return to_df

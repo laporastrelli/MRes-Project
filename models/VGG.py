@@ -177,7 +177,6 @@ def vgg16_bn(where_bn=[1,1,1,1,1], pretrained=False, progress=True, **kwargs):
     return _vgg('vgg16_bn', 'D', True, pretrained, progress, where_bn, **kwargs)
 
 
-
 def vgg19(pretrained=False, progress=True, **kwargs):
     r"""VGG 19-layer model (configuration "E")
     `"Very Deep Convolutional Networks For Large-Scale Image Recognition" <https://arxiv.org/pdf/1409.1556.pdf>`_
@@ -187,7 +186,6 @@ def vgg19(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _vgg('vgg19', 'E', False, pretrained, progress, **kwargs)
-
 
 
 def vgg19_bn(where_bn=[1,1,1,1,1], pretrained=False, progress=True, **kwargs):

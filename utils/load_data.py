@@ -6,7 +6,8 @@ from utils import utils_flags
 
 FLAGS = flags.FLAGS
 
-def get_data(dataset_path, dataset):
+def get_data():
+
     # dataset download decision
     download = False
 
@@ -24,12 +25,12 @@ def get_data(dataset_path, dataset):
         ])
 
     # prevents from downloading it if dataset already downloaded
-    if len(os.listdir(dataset_path + dataset)) == 0:
+    if len(os.listdir(FLAGS.dataset_path + FLAGS.dataset)) == 0:
         download = True
 
-    if dataset == 'CIFAR10':
-        train_set = datasets.CIFAR10(dataset_path + dataset, train=True, download=download, transform=transform_train)
-        test_set = datasets.CIFAR10(dataset_path + dataset, train=False, download=download, transform=transform_test)
+    if FLAGS.dataset == 'CIFAR10':
+        train_set = datasets.CIFAR10(FLAGS.dataset_path + FLAGS.dataset, train=True, download=download, transform=transform_train)
+        test_set = datasets.CIFAR10(FLAGS.dataset_path + FLAGS.dataset, train=False, download=download, transform=transform_test)
 
     # create loaders
     ## it is important NOT to shuffle the test dataset since the adversarial variation 

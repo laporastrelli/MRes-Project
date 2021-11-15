@@ -1,3 +1,4 @@
+from absl.flags import FLAGS
 import torchvision.models as models
 from models import ResNet, ResNet_bn, resnet
 
@@ -6,13 +7,13 @@ def get_model(model_name, batch_norm):
         if batch_norm:
             net = ResNet_bn.resnet50()
         else:
-            net = ResNet.resnet50()
+            net = ResNet.resnet50(where_bn=FLAGS.where_bn)
     
     elif model_name == 'ResNet101':
         if batch_norm:
             net = ResNet_bn.resnet101()
         else:
-            net = ResNet.resnet101()
+            net = ResNet.resnet101(where_bn=FLAGS.where_bn)
 
     elif model_name == 'VGG19':
         if batch_norm:
