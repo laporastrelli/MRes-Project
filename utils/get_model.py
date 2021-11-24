@@ -1,41 +1,32 @@
 from absl.flags import FLAGS
 import torchvision.models as models
-from models import ResNet, ResNet_bn, resnet
+from models import ResNet, ResNet_bn, VGG, resnet_
 
-def get_model(model_name, batch_norm):
+def get_model(model_name, where_bn):
     if model_name == 'ResNet50':
-        if batch_norm:
+        if sum(where_bn)>1:
+            print('BN')
             net = ResNet_bn.resnet50()
         else:
-            net = ResNet.resnet50(where_bn=FLAGS.where_bn)
+            print('no BN')
+            net = ResNet.resnet50(where_bn=where_bn)
     
-    elif model_name == 'ResNet101':
-        if batch_norm:
+    if model_name == 'ResNet101':
+        if sum(where_bn)>1:
             net = ResNet_bn.resnet101()
         else:
-            net = ResNet.resnet101(where_bn=FLAGS.where_bn)
+            net = ResNet.resnet101(where_bn=where_bn)
 
     elif model_name == 'VGG19':
-        if batch_norm:
-            net = models.vgg19_bn()
+        if sum(where_bn)==0:
+            net = VGG.vgg19(where_bn=where_bn)
         else:
-            net = models.vgg19()
-    
-    elif model_name == 'VGG16':
-        if batch_norm:
-            net = models.vgg16_bn()
-        else:
-            net = models.vgg16()
+            net = VGG.vgg19_bn(where_bn=where_bn)
 
-    elif model_name == 'VGG13':
-        if batch_norm:
-            net = models.vgg13_bn()
+    elif model_name == 'VGG16':
+        if sum(where_bn)==0:
+            net = VGG.vgg16(where_bn=where_bn)
         else:
-            net = models.vgg13()
-    
-    elif model_name == 'VGG11':
-        if batch_norm:
-            net = models.vgg11_bn()
-        else:
-            net = models.vgg11()
+            net = VGG.vgg16_bn(where_bn=where_bn)
+        
     return net

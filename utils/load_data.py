@@ -11,9 +11,12 @@ def get_data():
     # dataset download decision
     download = False
 
+    if FLAGS.mode == 'optimum':
+        FLAGS.batch_size = 400
+
     # performs transforms on data
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -35,6 +38,7 @@ def get_data():
     # create loaders
     ## it is important NOT to shuffle the test dataset since the adversarial variation 
     ## delta are going to be saved in memory in the same order as the test samples are. 
+    
     train_loader = DataLoader(train_set, batch_size=FLAGS.batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=FLAGS.batch_size, shuffle=False)
 

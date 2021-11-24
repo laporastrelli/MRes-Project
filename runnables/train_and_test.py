@@ -26,12 +26,14 @@ colums = ['Model', 'Dataset', 'Batch-Normalization',
           'Epsilon-Budget', 'Adversarial Test Accuracy', 'Transfer adv. Test Accuracy']
 
 
-def train_and_test():
+def main(argv):
+    
+    del argv
 
     FLAGS = flags.FLAGS
 
-    # list to store the results to append to df
-    to_df = []
+    # open pandas results log file
+    df = pd.read_pickle('./logs/results.pkl')
 
     # choose device
     device = torch.device(FLAGS.device if torch.cuda.is_available() else "cpu")
@@ -44,8 +46,6 @@ def train_and_test():
     now = datetime.now()
     dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")
     run_name = model_name + '_' + dt_string
-
-    to_df.append(dt_string)
 
     # create logs filename
     path_to_logs = 'logs/adv/' + model_name + '/'
@@ -86,9 +86,6 @@ def train_and_test():
         # test model
         test_acc = test_utils.test(net, PATH_to_model, test_loader, device)
 
-        # write results to list
-        to_df.append(test_acc)
-
         # write results
         f.write("Test Accuracy: " + str(test_acc) + "\n")  
 
@@ -102,10 +99,6 @@ def train_and_test():
             np.save(np.array(adv_test_acc), path_to_logs + dt_string + '.npy')
         else:
             f.write("Adversarial Test Accuracy: " + str(adv_test_acc) + "\n")
-        
-        # write results to list
-        if FLAGS.adversarial_test:
-            to_df.append(adv_test_acc)
     
     f.close()
 
@@ -141,9 +134,6 @@ def train_and_test():
         # test model
         test_acc = test_utils.test(net, PATH_to_model, test_loader, device)
 
-        # write results to list
-        to_df.append(test_acc)
-
         # save results
         f.write("Test Accuracy: " + str(test_acc) +"\n")
 
@@ -156,11 +146,8 @@ def train_and_test():
             np.save(np.array(adv_test_acc), path_to_logs + dt_string + '.npy')
         else:
             f.write("Adversarial Test Accuracy: " + str(adv_test_acc) + "\n")
-        
-        # write results to list
-        if FLAGS.adversarial_test:
-            to_df.append(adv_test_acc)
     
     f.close()
 
-    return to_df
+if __name__ == '__main__':
+    app.run(main)

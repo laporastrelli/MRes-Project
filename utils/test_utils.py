@@ -6,7 +6,6 @@ import numpy as np
 from utils.adversarial_attack import fgsm, pgd_linf
 from utils import get_model
 
-
 def test(net, 
         model_path, 
         test_loader, 
@@ -56,64 +55,66 @@ def adversarial_test(net,
     total = 0
 
     if eval:
-        with torch.no_grad():
-            for i, data in enumerate(test_loader, 0):
-                X, y = data
-                X, y = X.to(device), y.to(device)
+        
+        for i, data in enumerate(test_loader, 0):
+            X, y = data
+            X, y = X.to(device), y.to(device)
 
-                if attack == 'FGSM':
-                    delta = fgsm(net, X, y, epsilon)
-                        
-                elif attack == 'PGD':
-                    delta = pgd_linf(net, X, y, epsilon, alpha=1e-2, num_iter=40)
+            if attack == 'FGSM':
+                delta = fgsm(net, X, y, epsilon)
+                    
+            elif attack == 'PGD':
+                delta = pgd_linf(net, X, y, epsilon, alpha=1e-2, num_iter=40)
 
-                # create delta model folder if not existent
-                PATH_to_deltas = PATH_to_deltas_ + model_tag
-                if not os.path.isdir(PATH_to_deltas):
-                    os.mkdir(PATH_to_deltas)
+            # create delta model folder if not existent
+            PATH_to_deltas = PATH_to_deltas_ + model_tag
+            if not os.path.isdir(PATH_to_deltas):
+                os.mkdir(PATH_to_deltas)
+            
+            # create delta model-run folder if not existent
+            if not os.path.isdir(PATH_to_deltas + '/' + run_name):
+                os.mkdir(PATH_to_deltas + '/' + run_name )
+
+            # create delta model-run folder if not existent
+            if not os.path.isdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/'):
+                os.mkdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/')
+
+            path = PATH_to_deltas + '/' + run_name + '/' + attack + '/'
+
+            # save deltas and test model on adversaries
+            if len(delta) == 1:
+                eps_ = 'eps_' + str(epsilon[0]).replace('.', '')
+                if not os.path.isdir(path + '/' + eps_ + '/'):
+                    os.mkdir(path + '/' + eps_ + '/')
+
+                torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth") 
                 
-                # create delta model-run folder if not existent
-                if not os.path.isdir(PATH_to_deltas + '/' + run_name):
-                    os.mkdir(PATH_to_deltas + '/' + run_name )
+                with torch.no_grad():
+                    outputs = net(X+delta[0])
+                
+                _, predicted = torch.max(outputs.data, 1)
+                total += y.size(0)
+                correct_s += (predicted == y).sum().item()
 
-                # create delta model-run folder if not existent
-                if not os.path.isdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/'):
-                    os.mkdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/')
+            # if multiples epsilons are used save each of them and test model on adversaries
+            else:
 
-                path = PATH_to_deltas + '/' + run_name + '/' + attack + '/'
-
-                # save deltas and test model on adversaries
-                if len(delta) == 1:
-                    eps_ = 'eps_' + str(epsilon[0]).replace('.', '')
+                for k, idv_delta in enumerate(delta):
+                    num = epsilon[k]
+                    eps_ = 'eps_' + str(num).replace('.', '')
                     if not os.path.isdir(path + '/' + eps_ + '/'):
                         os.mkdir(path + '/' + eps_ + '/')
 
-                    torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth") 
-                    
-                    outputs = net(X+delta[0])
-                    
-                    _, predicted = torch.max(outputs.data, 1)
-                    total += y.size(0)
-                    correct_s += (predicted == y).sum().item()
+                    torch.save(idv_delta, path + '/' + eps_ + '/' 
+                                + "/adversarial_delta_" + str(i) + '.pth') 
 
-                # if multiples epsilons are used save each of them and test model on adversaries
-                else:
-
-                    for k, idv_delta in enumerate(delta):
-                        num = epsilon[k]
-                        eps_ = 'eps_' + str(num).replace('.', '')
-                        if not os.path.isdir(path + '/' + eps_ + '/'):
-                            os.mkdir(path + '/' + eps_ + '/')
-
-                        torch.save(idv_delta, path + '/' + eps_ + '/' 
-                                    + "/adversarial_delta_" + str(i) + '.pth') 
-
+                    with torch.no_grad():
                         outputs = net(X+idv_delta)
 
-                        _, predicted = torch.max(outputs.data, 1)
-                        correct_s[0, k] += (predicted == y).sum().item()
+                    _, predicted = torch.max(outputs.data, 1)
+                    correct_s[0, k] += (predicted == y).sum().item()
 
-                total += y.size(0)
+            total += y.size(0)
 
     else:
         if len(epsilon) > 1:
@@ -123,29 +124,30 @@ def adversarial_test(net,
         total = 0
         PATH_to_deltas = PATH_to_deltas_ + model_tag
 
-        with torch.no_grad():
-            for i, data in enumerate(test_loader, 0):
-                X, y = data
-                X, y = X.to(device), y.to(device)
+        
+        for i, data in enumerate(test_loader, 0):
+            X, y = data
+            X, y = X.to(device), y.to(device)
 
-                # load deltas 
-                for h, eps in enumerate(epsilon):
-                    
-                    eps_ = 'eps_' + str(eps).replace('.', '')
-                    path = PATH_to_deltas + '/' + run_name + '/' + attack + '/' + eps_ + '/'
-                    deltas = os.listdir(path)
-                    delta = torch.load(path + "/adversarial_delta_" + str(i) + ".pth")
-
+            # load deltas 
+            for h, eps in enumerate(epsilon):
+                
+                eps_ = 'eps_' + str(eps).replace('.', '')
+                path = PATH_to_deltas + '/' + run_name + '/' + attack + '/' + eps_ + '/'
+                deltas = os.listdir(path)
+                delta = torch.load(path + "/adversarial_delta_" + str(i) + ".pth")
+                
+                with torch.no_grad():
                     outputs = net(X+delta)
 
-                    _, predicted = torch.max(outputs.data, 1)
-                    
-                    if len(epsilon) > 1:
-                        correct_s[0, h] += (predicted == y).sum().item()
-                    else:
-                        correct_s += (predicted == y).sum().item()
+                _, predicted = torch.max(outputs.data, 1)
+                
+                if len(epsilon) > 1:
+                    correct_s[0, h] += (predicted == y).sum().item()
+                else:
+                    correct_s += (predicted == y).sum().item()
 
-                total += y.size(0)
+            total += y.size(0)
 
     acc = correct_s / total
 
