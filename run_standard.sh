@@ -1,19 +1,22 @@
 #!/bin/bash -l
-
 cd /data2/users/lr4617/An_Information_Theoretic_View_of_BN/adversarial_ml/MRes-Project
 
-model_name='VGG16'
+model_name='ResNet50'
 train=True
+mode=''
 load_pretrained=False
 pretrained_name=''
-bn_locations=(0,0,1,0,0)
-# bn_locations=(1,0,0,0,0)
-# bn_locations=(0,0,0,0,1)
+adversarial_test=False
+bn_locations=0
+save_to_log=False
 
 python3 main.py \
     --model_name=${model_name} \
     --train=${train}\
-    --load_pretrained=$load_pretrained \
+    --mode=${mode}\
+    --load_pretrained=${load_pretrained} \
+    --adversarial_test=${adversarial_test}\
     --pretrained_name=${pretrained_name} \
     --bn_locations=${bn_locations} \
-    --alsologtostderr
+    --save_to_log=${save_to_log}
+

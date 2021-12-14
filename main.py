@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 import numpy as np
+import csv
 from torch.utils.tensorboard import SummaryWriter
 from utils import utils_flags
 from absl import app
@@ -9,6 +10,7 @@ from absl import flags
 from functions.train import train
 from functions.test import test
 from utils.get_model import get_model
+
 
 columns = ['Model', 'Dataset', 'Batch-Normalization', 
           'Training Mode', 'Test Accuracy', 'Epsilon Budget',
@@ -21,9 +23,28 @@ def main(argv):
     FLAGS = flags.FLAGS
 
     # get inputs 
+    # for each 
     model_names = [FLAGS.model_name]
-    bn_locations = [int(i) for i in FLAGS.bn_locations]
-    print(bn_locations)
+    if FLAGS.model_name.find('VGG') != -1:
+        if FLAGS.bn_locations==100:
+            bn_locations = [1,1,1,1,1]
+        elif FLAGS.bn_locations==0:
+            bn_locations = [0,0,0,0,0]
+        else:
+            bn_locations = [i*0 for i in range(5)]
+            bn_locations[int(FLAGS.bn_locations-1)] = 1
+            print(bn_locations)
+
+    elif FLAGS.model_name.find('ResNet')!= -1:
+        if FLAGS.bn_locations==100:
+            bn_locations = [1,1,1,1]
+        elif FLAGS.bn_locations==0:
+            bn_locations = [0,0,0,0]
+        else:
+            bn_locations = [i*0 for i in range(4)]
+            bn_locations[int(FLAGS.bn_locations-1)] = 1
+            print(bn_locations)
+
     if FLAGS.train:
         FLAGS.load_pretrained == False
     elif FLAGS.train and not FLAGS.test_run:
@@ -33,7 +54,7 @@ def main(argv):
           FLAGS.train, 
           FLAGS.load_pretrained, 
           FLAGS.pretrained_name, 
-          FLAGS.bn_locations)
+          bn_locations)
 
     # define test run params
     if FLAGS.test_run:
@@ -115,9 +136,14 @@ def main(argv):
 
             # create dictionary for results log
             if FLAGS.save_to_log:
+                
+                model_name_ = FLAGS.model_name
+                if FLAGS.model_name.find('ResNet')!=-1 and FLAGS.version==2:
+                    model_name_ = FLAGS.model_name + '_v2'
+
                 # dict
                 df_dict = {
-                columns[0] : FLAGS.model_name,
+                columns[0] : model_name_,
                 columns[1] : FLAGS.dataset,
                 columns[2] : bn_string, 
                 columns[3] : FLAGS.mode, 
@@ -136,21 +162,14 @@ def main(argv):
                 df.to_pickle('./logs/results.pkl')
                 df.to_csv('./logs/results.csv')
 
+                csv_file = "results_.csv"
+                try:
+                    with open(csv_file, 'a') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=columns)
+                        writer.writerow(df_dict)
+                except IOError:
+                    print("I/O error")
+
 if __name__ == '__main__':
     app.run(main)
 
-
-
-'''bn_locations = [[1,1,1,1,1],
-                   [0,0,0,0,0],
-                   [1,0,0,0,0],
-                   [0,1,0,0,0],
-                   [0,0,1,0,0],
-                   [0,0,0,0,1]]'''
-
-'''bn_locations = [[1,1,1,1],
-                  [0,0,0,0],
-                  [1,0,0,0],
-                  [0,1,0,0],
-                  [0,0,1,0],
-                  [0,0,0,1]]'''
