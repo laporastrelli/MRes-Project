@@ -17,7 +17,7 @@ def test(net,
     
     correct = 0
     total = 0
-
+    
     with torch.no_grad():
         for i, data in enumerate(test_loader, 0):  
             X, y = data

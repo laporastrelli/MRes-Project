@@ -100,7 +100,7 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             # lr_scheduler = optim.lr_scheduler.MultiStepLR
             interval = []
             n_epochs = 75
-            momentum=0.9
+            momentum = 0.9
             weight_decay=5e-4
             grad_clip = False
 
