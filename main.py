@@ -17,15 +17,19 @@ columns = ['Model', 'Dataset', 'Batch-Normalization',
           'Training Mode', 'Test Accuracy', 'Epsilon Budget',
           'FGSM Test Accuracy', 'PGD Test Accuracy', 'DBA Test Accuracy']
 
+columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+               'Training Mode', 'Test Accuracy', 'Epsilon Budget',
+               'FGSM Test Accuracy', 'PGD Test Accuracy', 'DBA Test Accuracy']
+
 
 def main(argv):
     
     del argv
 
+    # parse inputs 
     FLAGS = flags.FLAGS
 
-    # get inputs 
-    # unpack epslion list to float
+    # unpack epsilon list to float
     for i in range(0, len(FLAGS.epsilon)):
         FLAGS.epsilon[i] = float(FLAGS.epsilon[i])
 
@@ -61,7 +65,6 @@ def main(argv):
 
     # define test run params
     if FLAGS.test_run:
-        model_names = ['']
         FLAGS.train = False
         FLAGS.test = False
         FLAGS.adversarial_test = False
@@ -75,7 +78,7 @@ def main(argv):
         test_acc = 0
         adv_acc_FGSM = 0.1
         adv_acc_PGD = 0.2
-
+        adv_acc_DBA = 0.25
         index = 'try'  
 
     # create results log file if it does not exist
@@ -96,6 +99,8 @@ def main(argv):
 
     # attacks to be used
     attacks = FLAGS.attacks_in
+
+    print('ATTACKS: ', attacks)
 
     # for each bn location train and test the model                    
     for where_bn in [bn_locations]:
@@ -135,11 +140,14 @@ def main(argv):
                     if attack == 'PGD':
                         adv_acc_PGD = adv_acc
 
-        # create dictionary for results log
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name
             if FLAGS.model_name.find('ResNet')!=-1 and FLAGS.version==2:
                 model_name_ = FLAGS.model_name + '_v2'
+
+            ##################################################
+            adv_acc_DBA = 0
+            ##################################################
 
             # dict
             df_dict = {
@@ -163,24 +171,29 @@ def main(argv):
             df.to_pickle('./logs/results.pkl')
             df.to_csv('./logs/results.csv')
 
+
+            ##################################################
+            adv_acc_DBA = 0
+            ##################################################
+
             # dict
             csv_dict = {
-                columns[0] : index,
-                columns[1] : model_name_,
-                columns[2] : FLAGS.dataset,
-                columns[3] : bn_string, 
-                columns[4] : FLAGS.mode, 
-                columns[5] : test_acc,
-                columns[6] : FLAGS.epsilon, 
-                columns[7] : adv_acc_FGSM, 
-                columns[8] : adv_acc_PGD, 
-                columns[9] : adv_acc_DBA
+                columns_csv[0] : index,
+                columns_csv[1] : model_name_,
+                columns_csv[2] : FLAGS.dataset,
+                columns_csv[3] : bn_string, 
+                columns_csv[4] : FLAGS.mode, 
+                columns_csv[5] : test_acc,
+                columns_csv[6] : FLAGS.epsilon, 
+                columns_csv[7] : adv_acc_FGSM, 
+                columns_csv[8] : adv_acc_PGD, 
+                columns_csv[9] : adv_acc_DBA
             }
 
             csv_file = "results_adv.csv"
             try:
                 with open(csv_file, 'a') as csvfile:
-                    writer = csv.DictWriter(csvfile, fieldnames=columns)
+                    writer = csv.DictWriter(csvfile, fieldnames=columns_csv)
                     writer.writerow(csv_dict)
             except IOError:
                 print("I/O error")

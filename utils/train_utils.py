@@ -1,14 +1,19 @@
-from absl.flags import FLAGS
-from torch._C import _propagate_and_assign_input_shapes
 import torch.nn as nn
 import torch.optim as optim
 import torch 
 import csv
 
+from absl import flags
+from absl.flags import FLAGS
+from torch._C import _propagate_and_assign_input_shapes
+from utils import utils_flags
+
 def train (train_loader, val_loader, model, device, model_name, batch_norm, writer, run_name):
     
-    print(model)
+    # parse inputs 
+    FLAGS = flags.FLAGS
 
+    # cuda settings
     torch.cuda.empty_cache()
 
     ################ Modes ################
@@ -19,12 +24,10 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             opt_func = optim.Adam
             lr_scheduler = optim.lr_scheduler.OneCycleLR
             max_lr = 2e-03
-
             # opt = optim.SGD(model.parameters(), lr=max_lr,  momentum=0.9, weight_decay=1e-4)
             opt = opt_func(model.parameters(), lr=max_lr, weight_decay=1e-4)
             n_epochs = 75
-            scheduler = lr_scheduler(opt, max_lr, epochs=n_epochs, 
-                                                            steps_per_epoch=len(train_loader))
+            scheduler = lr_scheduler(opt, max_lr, epochs=n_epochs, steps_per_epoch=len(train_loader))
             grad_clip = False
             grad_clip_val = 0.1
 
@@ -32,23 +35,19 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             max_lr = 2e-04
             opt = optim.SGD(model.parameters(), lr=max_lr,  momentum=0.9, weight_decay=1e-4)
             n_epochs = 125
-            scheduler = optim.lr_scheduler.OneCycleLR(opt, max_lr, epochs=n_epochs, 
-                                                            steps_per_epoch=len(train_loader))
+            scheduler = optim.lr_scheduler.OneCycleLR(opt, max_lr, epochs=n_epochs, steps_per_epoch=len(train_loader))
             grad_clip = True
             grad_clip_val = 0.01
             
     # option for training models at the best of their performance (2)
     if FLAGS.mode == 'standard': 
-        if batch_norm and sum(FLAGS.where_bn) >1:
+        if batch_norm and sum(FLAGS.where_bn)>1:
             lr_scheduler = optim.lr_scheduler.MultiStepLR
-            lr_ = 0.06
-            print('learning_rate: ', lr_)
+            lr_ = 0.1
             opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
-            n_epochs = 160
-            grad_clip=False
-            scheduler = optim.lr_scheduler.MultiStepLR(opt, [80, 130], gamma=0.2)
-            # scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=200)
-            # scheduler = optim.lr_scheduler.StepLR(opt, step_size=75, gamma=0.1) 
+            n_epochs = 150
+            grad_clip = False
+            scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
         else: 
             lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
             val = 1
@@ -126,13 +125,13 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
 
             yp = model(X)
             loss = nn.CrossEntropyLoss()(yp,y)
+            opt.zero_grad()
             loss.backward()
 
             if grad_clip:
                 nn.utils.clip_grad_value_(model.parameters(), clip_value=grad_clip_val)
 
             opt.step()
-            opt.zero_grad()
 
             if lr_scheduler == optim.lr_scheduler.OneCycleLR:
                 scheduler.step()
@@ -191,6 +190,18 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
     # writer.add_hparams(hparam_dict, metric_dict, run_name=run_name)
 
     return model
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     '''if lr_scheduler != optim.lr_scheduler.MultiStepLR and lr_scheduler != optim.lr_scheduler.StepLR: interval = 'n.a.'

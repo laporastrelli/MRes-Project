@@ -1,5 +1,7 @@
 ############ IMPORTS ############
+from foolbox.criteria import Misclassification
 import torch
+from torch._C import Size
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -21,6 +23,7 @@ from datetime import datetime
 from utils import utils_flags, load_data, test_utils
 from absl import app
 from absl import flags
+from foolbox.devutils import flatten
 
 from utils.get_model import get_model
 
@@ -76,24 +79,53 @@ def get_DBA_acc(run_name):
         X, y = data
         X, y = X.to(device), y.to(device)
 
-        print(type(X), X.shape)
-        print(type(y), y.shape)
+        attack =  fa.LinfinityBrendelBethgeAttack(steps=10, init_attack=fa.LinearSearchBlendedUniformNoiseAttack(steps=1000))
 
-        X = ep.astensor(X)
-        y = ep.astensor(y)
-
-        init_attack = fa.DatasetAttack()
-        init_attack.feed(fmodel, X)
-        init_advs = init_attack.run(fmodel, X, y)
-
-        attack = fb.attacks.LinfinityBrendelBethgeAttack(steps=15)
         print('Attacking ...')
-        advs = attack.run(fmodel, X, y, starting_points=init_advs)
+        
+        current_time = time.time()
+        advs = attack.run(fmodel, X, Misclassification(y))
+        next_time = time.time()
 
+        print('Attacked...')
+
+        print("Time taken to attack 128 samples (min): ", (next_time-current_time)/60)
+
+        print(advs[0, :, :, :])
+        print(X[0, :, :, :])
+
+        # adv_sample = X[0,:, :, :] + advs[0,:, :, :]
+        adv_sample = advs[0,:, :, :]
+        np_adv_sample = adv_sample.cpu().numpy()
+        np_X = X[0,:, :, :].cpu().numpy()
+
+        plt.imshow(np.transpose(np_X, (1, 2, 0)))
+        plt.savefig('original_sample.png')
+        plt.imshow(np.transpose(np_adv_sample, (1, 2, 0)))
+        plt.savefig('adversarial_example.png')
+        
         acc += fb.accuracy(fmodel, advs, y)
+        norms = torch.norm(torch.flatten(torch.abs(X-advs), start_dim=1), float('inf'), dim=1)
+        
+        print(norms)
+        print(torch.median(norms))
         print(acc)
-
-        # error = is_adv.double().float().mean().item()
     
     return acc/len(test_loader)
 
+'''
+X = ep.astensor(X)
+y = ep.astensor(y)
+
+init_attack = fa.DatasetAttack()
+init_attack.feed(fmodel, X)
+init_advs = init_attack.run(fmodel, X, y)
+
+# norms = ep.norms.lp(flatten(advs - X), p=ep.inf, axis=-1)
+
+attack = fa.BoundaryAttack(steps=500,
+                            init_attack=fa.LinearSearchBlendedUniformNoiseAttack(steps=1000),
+                            update_stats_every_k=1)
+
+# error = is_adv.double().float().mean().item()
+'''
