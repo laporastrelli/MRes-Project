@@ -1,8 +1,10 @@
 cd /data2/users/lr4617/An_Information_Theoretic_View_of_BN/adversarial_ml/MRes-Project
-for bn_locations in 4 0 100
-do
+for bn_locations in 1 2 3
+do  
+    device='cuda:2'
     model_name='ResNet50'
     version=1
+    dataset='SVHN'
     train=True
     mode='standard'
     load_pretrained=False
@@ -13,8 +15,10 @@ do
     save_to_log=True
 
     python3 main.py \
+        --device=${device}\
         --model_name=${model_name}\
         --version=${version}\
+        --dataset=${dataset}\
         --train=${train}\
         --mode=${mode}\
         --load_pretrained=$load_pretrained\

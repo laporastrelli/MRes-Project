@@ -136,3 +136,6 @@ runs/
 deltas/
 logs/
 not_in_use/
+
+# Files
+scripts/schedule.txt

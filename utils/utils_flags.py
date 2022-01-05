@@ -10,11 +10,11 @@ now = datetime.now()
 dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")
 
 # stadard flags
-flags.DEFINE_string('device', 'cuda:0', 'device name - alernatives: "cpu"')
+flags.DEFINE_string('device', None, 'device name - alernatives: "cpu"')
 flags.DEFINE_string('model_name', None, 'model name among available models')
 flags.DEFINE_integer('version', None, 'model version to use (only for ResNet)')
 flags.DEFINE_integer('batch_size', 128, 'batch size for training')
-flags.DEFINE_string('dataset', 'CIFAR10', 'dataset to use')
+flags.DEFINE_string('dataset', None, 'dataset to use')
 flags.DEFINE_string('dataset_path', '/data2/users/lr4617/data/', 'path to dataset')
 flags.DEFINE_string('root_path', '/data2/users/lr4617', 'path to root directory')
 

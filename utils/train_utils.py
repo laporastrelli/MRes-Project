@@ -39,8 +39,9 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             grad_clip = True
             grad_clip_val = 0.01
             
-    # option for training models at the best of their performance (2)
+    # option for training models at the best of their performance (2) -- ResNet (only)
     if FLAGS.mode == 'standard': 
+        # option for full-BN training
         if batch_norm and sum(FLAGS.where_bn)>1:
             lr_scheduler = optim.lr_scheduler.MultiStepLR
             lr_ = 0.1
@@ -48,6 +49,7 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             n_epochs = 150
             grad_clip = False
             scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+        # option for partial (or none)-BN training
         else: 
             lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
             val = 1
@@ -61,14 +63,11 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             grad_clip = True
             grad_clip_val = 0.1
     
-    # option for training BN and non BN trained models under the same hyperparameters setup
+    # option for training models at the best of their performance (3) -- VGG or ResNet
     else:
         if model_name.find('ResNet')!= -1 :
             print("Training ResNet50 ...")
-
-            # lr_scheduler = optim.lr_scheduler.CosineAnnealingLR
             lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
-            # lr_scheduler = optim.lr_scheduler.StepLR
 
             interval = []
             if batch_norm:
@@ -88,29 +87,26 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
                 grad_clip_val=0.1
 
             opt = opt_func(model.parameters(), lr=lr_,  momentum=momentum, weight_decay=weight_decay)
-            # scheduler = lr_scheduler(opt, T_max=200)
-            # scheduler = lr_scheduler(opt, step_size=100, gamma=0.1)
             scheduler = lr_scheduler(opt, 'min', patience=15)
         
         if model_name.find('VGG')!= -1:
             print("Training VGG ...")
             opt_func = optim.SGD
             lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
-            # lr_scheduler = optim.lr_scheduler.MultiStepLR
             interval = []
-            n_epochs = 75
+            n_epochs = 65
+            if FLAGS.dataset=='SVHN':
+                n_epochs=35
             momentum = 0.9
             weight_decay=5e-4
             grad_clip = False
+            lr_ = 0.01
 
-            if batch_norm:
-                lr_ = 0.01
-            else:
-                lr_ = 0.01
+            if FLAGS.dataset == 'SVHN' and FLAGS.where_bn[4]==1 and sum(FLAGS.where_bn)==1:
+                lr_= 0.03
 
             opt = opt_func(model.parameters(), lr=lr_,  momentum=momentum, weight_decay=weight_decay)
             scheduler = lr_scheduler(opt, 'min', patience=6)
-            # scheduler = lr_scheduler(opt, [40, 60, 80], gamma=0.1)
 
     print('LR scheduler: ', lr_scheduler)
     print('Starting LR: ', lr_)

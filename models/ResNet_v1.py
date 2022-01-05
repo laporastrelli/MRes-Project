@@ -9,7 +9,6 @@ import torch.nn.functional as F
 
 from .custom_modules import Identity, FakeReLU, SequentialWithArgs
 
-
 class BasicBlock(nn.Module):
     expansion = 1
 
