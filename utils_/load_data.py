@@ -2,7 +2,7 @@ import os
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from absl import flags
-from utils import utils_flags
+from utils_ import utils_flags
 
 FLAGS = flags.FLAGS
 
@@ -46,17 +46,20 @@ def get_data():
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
                                   download=download)
+
         test_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, 
                                  split='test', 
                                  transform=transforms.Compose([
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
                                  download=download)
-
+    
     # create loaders
     ## it is important NOT to shuffle the test dataset since the adversarial variation 
     ## delta are going to be saved in memory in the same order as the test samples are. 
     
+    print(type(test_set))
+
     train_loader = DataLoader(train_set, batch_size=FLAGS.batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=FLAGS.batch_size, shuffle=False)
 

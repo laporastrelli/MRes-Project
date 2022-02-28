@@ -20,12 +20,12 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from utils import utils_flags, load_data, test_utils
+from utils_ import utils_flags, load_data, test_utils
 from absl import app
 from absl import flags
 from foolbox.devutils import flatten
 
-from utils.get_model import get_model
+from utils_.get_model import get_model
 
 def get_DBA_acc(run_name):
 
@@ -64,7 +64,7 @@ def get_DBA_acc(run_name):
     PATH_to_model = FLAGS.root_path + '/models/' + model_name + '/' + run_name + '.pth'
 
     net.load_state_dict(torch.load(PATH_to_model))
-    net.cuda()
+    net.to(device)
     net.eval()
 
     preprocessing = dict(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010], axis=-3)

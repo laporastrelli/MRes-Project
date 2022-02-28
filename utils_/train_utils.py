@@ -6,7 +6,7 @@ import csv
 from absl import flags
 from absl.flags import FLAGS
 from torch._C import _propagate_and_assign_input_shapes
-from utils import utils_flags
+from utils_ import utils_flags
 
 def train (train_loader, val_loader, model, device, model_name, batch_norm, writer, run_name):
     
@@ -41,28 +41,54 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             
     # option for training models at the best of their performance (2) -- ResNet (only)
     if FLAGS.mode == 'standard': 
-        # option for full-BN training
-        if batch_norm and sum(FLAGS.where_bn)>1:
-            lr_scheduler = optim.lr_scheduler.MultiStepLR
-            lr_ = 0.1
-            opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
-            n_epochs = 150
-            grad_clip = False
-            scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
-        # option for partial (or none)-BN training
-        else: 
-            lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
-            val = 1
-            if val in FLAGS.where_bn and FLAGS.where_bn.index(1) == 2:
-                lr_ = 0.03
-            else:
-                lr_ = 0.01
-            opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
-            n_epochs = 150
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', patience=10)
-            grad_clip = True
-            grad_clip_val = 0.1
-    
+        if FLAGS.dataset == 'CIFAR10':
+            # option for full-BN training
+            if batch_norm and sum(FLAGS.where_bn)>1:
+                lr_scheduler = optim.lr_scheduler.MultiStepLR
+                lr_ = 0.1
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 150
+                grad_clip = False
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+            # option for partial (or none)-BN training
+            else: 
+                lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
+                val = 1
+                if val in FLAGS.where_bn and FLAGS.where_bn.index(1) == 2:
+                    lr_ = 0.03
+                else:
+                    lr_ = 0.01
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 150
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', patience=10)
+                grad_clip = True
+                grad_clip_val = 0.1
+
+        elif FLAGS.dataset == 'SVHN':
+            # option for full-BN training
+            if batch_norm and sum(FLAGS.where_bn)>1:
+                lr_scheduler = optim.lr_scheduler.MultiStepLR
+                lr_ = 0.1
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 75
+                grad_clip = False
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [25, 45], gamma=0.1) 
+            # option for partial (or none)-BN training
+            else: 
+                lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
+                val = 1
+                if val in FLAGS.where_bn and FLAGS.where_bn.index(1) == 2:
+                    lr_ = 0.03
+                elif sum(FLAGS.where_bn)==0:
+                    lr_ = 0.001
+                else:
+                    lr_ = 0.01
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 75
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', patience=10)
+                grad_clip = True
+                grad_clip_val = 0.1
+                
     # option for training models at the best of their performance (3) -- VGG or ResNet
     else:
         if model_name.find('ResNet')!= -1 :
@@ -103,7 +129,7 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             lr_ = 0.01
 
             if FLAGS.dataset == 'SVHN' and FLAGS.where_bn[4]==1 and sum(FLAGS.where_bn)==1:
-                lr_= 0.03
+                lr_= 0.0075
 
             opt = opt_func(model.parameters(), lr=lr_,  momentum=momentum, weight_decay=weight_decay)
             scheduler = lr_scheduler(opt, 'min', patience=6)

@@ -16,8 +16,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from models import ResNet, ResNet_bn
-from utils import train_utils, test_utils, get_model, utils_flags, load_data
+from utils_ import train_utils, test_utils, get_model, utils_flags, load_data
 from absl import app
 from absl import flags
 
@@ -51,7 +50,11 @@ def train(model_name, where_bn):
         batch_norm = True
 
     # create run name to contain info about where the BN layer is 
-    run_name = FLAGS.model_name + '_' + bn + '_' + dt_string   
+    run_name = FLAGS.model_name + '_' + bn + '_' + dt_string
+
+    '''if FLAGS.model_name == 'ResNet50':
+        if FLAGS.version == 2:
+            run_name = FLAGS.model_name + 'v' + str(FLAGS.version) + '_' + bn + '_' + dt_string'''
 
     # create run name (Tensorboard)
     writer = SummaryWriter('./runs/' + run_name)
@@ -64,7 +67,7 @@ def train(model_name, where_bn):
     # train model
     net = train_utils.train(train_loader, 
                             test_loader, 
-                            net.cuda(), 
+                            net.to(device), 
                             FLAGS.device, 
                             FLAGS.model_name, 
                             batch_norm, 

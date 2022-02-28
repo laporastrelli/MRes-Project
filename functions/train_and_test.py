@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from models import ResNet, ResNet_bn
-from utils import train_utils, test_utils, get_model, utils_flags, load_data
+from utils_ import train_utils, test_utils, get_model, utils_flags, load_data
 from absl import app
 from absl import flags
 
@@ -70,7 +70,7 @@ def train_and_test(model_name_in, where_bn, attack=None):
         # train model
         net = train_utils.train(train_loader, 
                                 test_loader, 
-                                net.cuda(), 
+                                net.to(device), 
                                 FLAGS.device, 
                                 FLAGS.model_name, 
                                 batch_norm, 

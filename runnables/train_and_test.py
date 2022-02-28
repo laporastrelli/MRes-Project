@@ -70,7 +70,7 @@ def main(argv):
         net = get_model.get_model(model_name, FLAGS.batch_norm)
     
         # train model
-        net = train_utils.train(train_loader, test_loader, net.cuda(), FLAGS.device, model_name, FLAGS.n_epochs, FLAGS.batch_norm, writer)
+        net = train_utils.train(train_loader, test_loader, net.to(device), FLAGS.device, model_name, FLAGS.n_epochs, FLAGS.batch_norm, writer)
 
         # save model
         if not os.path.isdir(FLAGS.root_path + '/models/' + model_name):
@@ -119,7 +119,7 @@ def main(argv):
         net = get_model.get_model(FLAGS.model_name, FLAGS.batch_norm)
 
         # train model
-        net = train_utils.train(train_loader, test_loader, net.cuda(), FLAGS.device, FLAGS.model_name, FLAGS.n_epochs, FLAGS.batch_norm, writer)
+        net = train_utils.train(train_loader, test_loader, net.to(device), FLAGS.device, FLAGS.model_name, FLAGS.n_epochs, FLAGS.batch_norm, writer)
 
         # save model
         if not os.path.isdir(FLAGS.root_path + '/models/' + model_name):

@@ -109,16 +109,10 @@ class Bottleneck(nn.Module):
         # conv layer 3
         self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
 
-        # shortcut layer
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False))
-        
-        # BN layer position according to v2
+        # BN layer position according to v3
         if normalization == "bn":
             if self.use_bn:
-                self.bn4 = nn.BatchNorm2d(self.expansion*planes)
+                self.bn3 = nn.BatchNorm2d(self.expansion*planes)
         elif normalization == "id":
             self.bn4 = Identity()
         elif normalization == "gn":
@@ -127,6 +121,12 @@ class Bottleneck(nn.Module):
             self.bn4 = nn.GroupNorm(num_groups=1, num_channels=planes)
         elif normalization == "in":
             self.bn4 = nn.InstanceNorm2d(planes, affine=True)
+
+        # shortcut layer
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False))
 
         # block activation layer
         self.activation = activation
@@ -156,12 +156,12 @@ class Bottleneck(nn.Module):
         # conv layer 3 
         out = self.conv3(out)
 
+        # final block BN layer according to ResNet v3 architecture
+        if self.use_bn:
+            out = self.bn3(out)
+
         # shortcut layer
         out += self.shortcut(x)
-
-        # final block BN layer according to ResNet v2 architecture
-        if self.use_bn:
-            out = self.bn4(out)
 
         # final block activation layer
         if fake_relu:
@@ -256,7 +256,7 @@ def ResNet34(normalization="bn", num_classes=10, activation="relu", where_bn=[1,
     return ResNet(BasicBlock, [3,4,6,3], normalization=normalization, num_classes=num_classes, activation=activation, where_bn=where_bn)
 
 def ResNet50(normalization="bn", num_classes=10, activation="relu", where_bn=[1,1,1,1]):
-    print("ResNet v2")
+    print("ResNet v3")
     return ResNet(Bottleneck, [3,4,6,3], normalization=normalization, num_classes=num_classes, activation=activation, where_bn=where_bn)
 
 def ResNet101(normalization="bn", num_classes=10, activation="relu", where_bn=[1,1,1,1]):

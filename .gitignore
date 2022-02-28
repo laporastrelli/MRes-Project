@@ -131,11 +131,25 @@ dmypy.json
 # CSV
 *.csv
 
+# images
+*.jpg
+
+# numpy
+*.npy
+
+# text files
+*.txt
+
 # Folders
 runs/
 deltas/
 logs/
 not_in_use/
+results/
+sample_delta/
+advertorch/
+advertorch_/
+scripts/
 
 # Files
 scripts/schedule.txt
