@@ -50,7 +50,6 @@ def main(argv):
 
     # get BN locations from pretrained model name
     if FLAGS.load_pretrained:
-        print(FLAGS.result_log)
         result_log = FLAGS.result_log.split(',')
         temp = FLAGS.pretrained_name.split('_')[1]
         if temp == 'bn':
@@ -116,7 +115,6 @@ def main(argv):
           FLAGS.pretrained_name, 
           bn_locations)
 
-    print('BATCH SIZE: ', FLAGS.batch_size)
     ######################################################### OPERATIONS #########################################################
 
     where_bn = bn_locations
@@ -149,14 +147,17 @@ def main(argv):
         adv_accs = dict()
         for attack in FLAGS.attacks_in:
             FLAGS.attack = attack
-            if attack != 'DBA' and attack != 'FAB':
+            if attack == '-PGD':
                 for eps in FLAGS.epsilon_in:
                     FLAGS.epsilon = float(eps)
                     dict_name = attack + '-' + str(FLAGS.epsilon)
                     adv_accs[dict_name] = test(index, adversarial=True)
-            else:
-                dict_name = attack
-                adv_accs[dict_name] = test(index, adversarial=True)
+                    
+            elif attack == 'FAB' or attack == 'APGD' or attack == 'Square':
+                for eps in FLAGS.epsilon_in:
+                    FLAGS.epsilon = float(eps)
+                    dict_name = attack + '-' + str(FLAGS.epsilon)
+                    adv_accs[dict_name] = get_FAB_acc(index, attack)
 
     if FLAGS.save_to_log:
         model_name_ = FLAGS.model_name
@@ -205,9 +206,14 @@ def main(argv):
         else:
             bn_string = str(where_bn.index(1) + 1)
         
+        root = '/data2/users/lr4617/An_Information_Theoretic_View_of_BN/adversarial_ml/MRes-Project'
+
         name = FLAGS.model_name + '_' + bn_string
-        to_save = np.asarray(result_log[6:]).astype(np.float64)
-        path_out = './plot/' + name + '/' + name +  '_' + FLAGS.which + '.npy'
+        folder_name = FLAGS.which
+        print(result_log)
+        print(result_log[7:])
+        to_save = np.asarray(result_log[7:]).astype(np.float64)
+        path_out = root + '/plot/' + folder_name + '/' + name +  '_' + FLAGS.which + '.npy'
 
         print(name)
 
@@ -231,6 +237,9 @@ if __name__ == '__main__':
 
 
 
+
+
+
 '''
             eps_list = [str(result_log[6]), str(result_log[7])] + FLAGS.epsilon_in
 
@@ -242,7 +251,6 @@ if __name__ == '__main__':
 
             idx = idx+1
             csv_dict[columns_csv[idx]] = result_log[10]
-
 
 
 elif attack == 'DBA':

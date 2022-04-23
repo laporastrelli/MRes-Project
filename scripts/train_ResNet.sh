@@ -1,8 +1,9 @@
 cd /data2/users/lr4617/An_Information_Theoretic_View_of_BN/adversarial_ml/MRes-Project
-for bn_locations in 100
+for bn_locations in 1 2 3 4 0 100
 do
+    device='cuda:1'
     model_name='ResNet50'
-    version=1
+    version=4
     train=True
     mode='standard'
     load_pretrained=False

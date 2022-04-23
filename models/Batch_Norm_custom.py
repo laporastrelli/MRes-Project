@@ -21,21 +21,16 @@ class BatchNorm2d(nn.Module):
         - beta: the learnable bias of the module of shape (num_features).
         """
 
-        # TODO: Define the parameters used in the forward pass                 #
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         self.num_features = num_features
         self.eps = eps
         self.momentum = momentum
 
-        # self.register_parameter is not used as it was mentioned on piazza
-        # that this will be overridden
         self.gamma = torch.ones(self.num_features)
         self.beta = torch.zeros(self.num_features)
 
         self.running_mean = torch.zeros(self.num_features)
         self.running_variance = torch.ones(self.num_features)
 
-        # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     def forward(self, x):
         """
@@ -46,9 +41,6 @@ class BatchNorm2d(nn.Module):
         Output:
         - out: Output data of shape (N, C, H, W) (same shape as input)
         """
-        # TODO: Implement the forward pass                                     #
-        #       (be aware of the difference for training and testing)          #
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         mean = x.mean([0, 2, 3])
         variance = x.var([0, 2, 3], unbiased=False)
@@ -67,5 +59,4 @@ class BatchNorm2d(nn.Module):
 
         x = out
 
-        # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return x

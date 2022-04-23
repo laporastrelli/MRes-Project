@@ -3,10 +3,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from utils_ import utils_flags
-from absl import flags
-FLAGS = flags.FLAGS
-
 # from .utils import load_state_dict_from_url
 
 
@@ -71,34 +67,33 @@ class VGG(nn.Module):
 
 
 def make_layers(cfg, batch_norm, normalization):
-    FLAGS.input_size = [FLAGS.batch_size, 3, 32, 32]
     layers = []
     in_channels = 3
     cnt = 0
-    for num, v in enumerate(cfg):
+    for v in cfg:
         if v == 'M':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             cnt+=1
             # calculate shape
-            FLAGS.input_size[2] = int(np.floor((FLAGS.input_size[2] - 2)/2)) + 1
+            FLAGS.input_size[2] = np.floor((FLAGS.input_size[2] - 2)/2) + 1
             FLAGS.input_size[3] = FLAGS.input_size[2]
 
         else:
             conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
-            # calculate shape for LayerNorm
-            FLAGS.input_size[1] = v
-            normalized_shape = FLAGS.input_size[1:]
-
             if batch_norm[cnt] == 1:
                 if normalization == 'bn':
                     layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
                 elif normalization == 'ln':
+                    # calculate shape
+                    FLAGS.input_size[1] = v
+                    normalized_shape = FLAGS.input_size[1:]
                     layers += [conv2d, nn.LayerNorm(normalized_shape), nn.ReLU(inplace=True)]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
-            in_channels = v 
+            in_channels = v
 
     return nn.Sequential(*layers)
+
 
 cfgs = {
     'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],

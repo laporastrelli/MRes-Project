@@ -91,7 +91,6 @@ class BasicBlock(nn.Module):
             out = self.activation_fn(out)
         return out
 
-
 class Bottleneck(nn.Module):
     expansion = 4
 

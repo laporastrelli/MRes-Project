@@ -20,6 +20,7 @@ from datetime import datetime
 from zmq import proxy
 from utils_ import test_utils, utils_flags, load_data
 from utils_.get_model import get_model
+from utils_.miscellaneous import get_model_path, get_model_specs
 from absl import app
 from absl import flags
 from functions.get_entropy import get_layer_entropy
@@ -43,31 +44,14 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
     # load dataset
     _, test_loader = load_data.get_data()
     
-    # retrive model details from run_name
-    model_name = run_name.split('_')[0]
-    if run_name.split('_')[1] == 'no':
-        if model_name.find('ResNet')!= -1:
-            where_bn = [0,0,0,0]
-        else:
-            where_bn = [0,0,0,0,0]
-    elif run_name.split('_')[1] == 'bn':
-        if model_name.find('ResNet')!= -1:
-            where_bn = [1,1,1,1]
-        else:
-            where_bn = [1,1,1,1,1]
-    else:
-        where_bn_idx = int(run_name.split('_')[1])
-        if model_name.find('ResNet')!= -1:
-            where_bn = [i*0 for i in range(4)]
-        elif model_name.find('VGG')!= -1:
-            where_bn = [i*0 for i in range(5)]
-        where_bn[where_bn_idx] = 1
+    # retrive model specs from run_name
+    model_name, where_bn = get_model_specs(run_name)
 
     # re initialize model to apply saved weights
     net = get_model(model_name, where_bn)
 
     # set model path
-    PATH_to_model = FLAGS.root_path + '/models/' + model_name + '/' + run_name + '.pth'
+    PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     
     # test model (standard)
     if standard:
@@ -75,8 +59,13 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                    PATH_to_model, 
                                    test_loader, 
                                    device, 
+                                   eval_mode=FLAGS.use_pop_stats,
                                    inject_noise=FLAGS.test_noisy, 
-                                   noise_variance=FLAGS.noise_variance)
+                                   noise_variance=FLAGS.noise_variance, 
+                                   random_resizing=FLAGS.random_resizing,
+                                   noise_capacity_constraint=FLAGS.noise_capacity_constraint,
+                                   capacity=FLAGS.capacity,
+                                   get_logits=FLAGS.get_logits)
         outputs.append(test_acc)
     
     # get features of specific layers in the model
@@ -116,10 +105,13 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    attack=FLAGS.attack, 
                                                    epsilon=FLAGS.epsilon, 
                                                    num_iter=FLAGS.PGD_iterations,
+                                                   capacity=FLAGS.capacity,
+                                                   noise_capacity_constraint=FLAGS.noise_capacity_constraint,
                                                    use_pop_stats=FLAGS.use_pop_stats,
                                                    inject_noise=FLAGS.test_noisy, 
                                                    noise_variance=FLAGS.noise_variance, 
-                                                   no_eval_clean=FLAGS.no_eval_clean)
+                                                   no_eval_clean=FLAGS.no_eval_clean,
+                                                   random_resizing=FLAGS.random_resizing)
         
         outputs.append(adv_test_acc)
         

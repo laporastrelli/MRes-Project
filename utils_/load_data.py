@@ -58,7 +58,6 @@ def get_data():
     ## it is important NOT to shuffle the test dataset since the adversarial variation 
     ## delta are going to be saved in memory in the same order as the test samples are. 
     
-    print(type(test_set))
 
     train_loader = DataLoader(train_set, batch_size=FLAGS.batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=FLAGS.batch_size, shuffle=False)

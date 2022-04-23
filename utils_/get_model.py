@@ -1,8 +1,10 @@
 from absl.flags import FLAGS
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train
+from utils_ import utils_flags
 
 def get_model(model_name, where_bn):
+    
     if model_name == 'ResNet50':
         if sum(where_bn)>1:
             print('BN')
@@ -37,9 +39,16 @@ def get_model(model_name, where_bn):
 
     elif model_name == 'VGG19':
         if sum(where_bn)==0:
-            net = VGG.vgg19(where_bn=where_bn)
+            net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization)
         else:
-            net = VGG.vgg19_bn(where_bn=where_bn)
+            net = VGG.vgg19_bn(where_bn=where_bn, normalization=FLAGS.normalization)
+
+        if FLAGS.normalization == 'ln':
+            print(net)
+
+        if FLAGS.train_noisy:
+            print("Noisy Training ...")
+            net = noisy_VGG_train.noisy_VGG_train(net, FLAGS.train_noise_variance, FLAGS.device)
 
     elif model_name == 'VGG16':
         if sum(where_bn)==0:

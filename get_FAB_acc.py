@@ -1,6 +1,8 @@
 ############ IMPORTS ############
 from itertools import count
 from statistics import mean
+from tkinter import Y
+from cv2 import ellipse2Poly
 import torch
 from torch._C import Size
 import torch.nn as nn
@@ -21,171 +23,237 @@ from datetime import datetime
 from utils_ import load_data, utils_flags, test_utils
 from absl import app
 from absl import flags
-from advertorch.attacks import FABAttack
+from advertorch.attacks import FABAttack, LinfFABAttack
+from autoattack import AutoAttack
 from utils_.get_model import get_model
-from utils_.adversarial_attack import pgd_linf
+from utils_.adversarial_attack import pgd_linf, pgd_linf_analysis
+from utils_.miscellaneous import get_bn_config, get_minmax, get_model_name, get_model_path, set_eval_mode
+from torch import linalg as LA
 
-def get_FAB_acc(run_name):
+def get_FAB_acc(run_name, attack, verbose=True):
+
+    # for each iterable batch we create a smaller batch of length equal to the number 
+    # of correctly classified samples in that batch and calculate the L-infinity norm
+    # between the original sample and the adversarial sample. The idea is that if FAB
+    # is not able to find an adversarial examples with smaller perturbation than PGD does,
+    # then this might imply that the selected samples are more globally robust, not just 
+    # based on gradient measures.
 
     FLAGS = flags.FLAGS
 
-    # choose device
+    print('ATTACK: ', FLAGS.attack)
+    print('EPSILON: ', FLAGS.epsilon)
+    
     device = torch.device(FLAGS.device if torch.cuda.is_available() else "cpu")
-
-    # load dataset
     _, test_loader = load_data.get_data()
-
-    # retrive model details from run_name
-    model_name = run_name.split('_')[0]
-    if run_name.split('_')[1] == 'no':
-        if model_name.find('ResNet')!= -1:
-            where_bn = [0,0,0,0]
-        else:
-            where_bn = [0,0,0,0,0]
-    elif run_name.split('_')[1] == 'bn':
-        if model_name.find('ResNet')!= -1:
-            where_bn = [1,1,1,1]
-        else:
-            where_bn = [1,1,1,1,1]
-    else:
-        where_bn_idx = int(run_name.split('_')[1])
-        if model_name.find('ResNet')!= -1:
-            where_bn = [i*0 for i in range(4)]
-        elif model_name.find('VGG')!= -1:
-            where_bn = [i*0 for i in range(5)]
-        where_bn[where_bn_idx] = 1
-
-    # re initialize model to apply saved weights
+    where_bn = get_bn_config(run_name)
+    model_name = get_model_name(run_name)
     net = get_model(model_name, where_bn)
-
-    # set model path
-    PATH_to_model = FLAGS.root_path + '/models/' + model_name + '/' + run_name + '.pth'
-
-    # load model
+    PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     net.load_state_dict(torch.load(PATH_to_model))
-    net.eval()
+    set_eval_mode(net, FLAGS.use_pop_stats)
     net.to(device)
+
+    if verbose:
+        if not net.training:
+            print('MODE: EVAL')
+        elif net.training:
+            print('MODE: not EVAL')
 
     # initialize helper vars
     correct = 0
     counter = 0
     correct_samples = np.zeros((len(test_loader), FLAGS.batch_size))
+    min_tensor, max_tensor = get_minmax(test_loader, device)
+    all_samples = True    
 
-    # set useful paths
-    path_to_deltas = '/data2/users/lr4617/deltas/' + model_name + '/' + run_name + '/' + 'PGD' + '/eps_01/'
-    deltas = os.listdir(path_to_deltas)
-
-    # First run PGD and identify for each  batch the correctly classified samples
-    for i, data in enumerate(test_loader, 0):
-        X, y = data
-        X, y = X.to(device), y.to(device)
-        
+    # First run PGD and identify for each batch the correctly classified samples
+    if not all_samples:
         print('Attacking -- PGD')
-        current_time = time.time()
-        
-        # if len(os.listdir('./sample_delta/')) == i:
-        if len(os.listdir('./sample_delta/')) == len(test_loader) or len(os.listdir('./sample_delta/'))== i:
-            delta = pgd_linf(net, X, y, float(FLAGS.epsilon), alpha=1e-2, num_iter=int(FLAGS.PGD_iterations))
-            delta_name = './sample_delta/' + 'perturbation_' + str(i) + '.pt'
-            torch.save(delta[0], delta_name)
+        for i, data in enumerate(test_loader, 0):
+            X, y = data
+            X, y = X.to(device), y.to(device)
 
-            next_time = time.time()
-            print("Time taken to attack {num_samples} samples (min): {time}" 
-                .format(num_samples=str(FLAGS.batch_size), 
-                time=str((next_time-current_time)/60)))
+            # get timestamp
+            dir_perturbations = './sample_delta/'
+            
+            # set directories and decide wheter to run PGD
+            if not net.training:
+                if len(os.listdir(dir_perturbations + 'eval' + '/')) < len(test_loader):
+                    run = True
+                else: run = False
+            elif net.training:
+                if len(os.listdir(dir_perturbations + 'no_eval' + '/')) < len(test_loader):
+                    run = True
+                else: run = False
+            
+            # compute adversarial examples
+            if run:
+                delta = pgd_linf(net, 
+                                X, 
+                                y, 
+                                FLAGS.epsilon, 
+                                max_tensor, 
+                                min_tensor, 
+                                alpha=FLAGS.epsilon/10, 
+                                num_iter=FLAGS.PGD_iterations)
 
-        else:
-            print('Loading delta ...')
-            delta = torch.load('./sample_delta/' + 'perturbation_' + str(i) + '.pt')
+            # save computed deltas
+            if not net.training:
+                if len(os.listdir(dir_perturbations + 'eval' + '/')) < len(test_loader):
+                    torch.save(delta, dir_perturbations + 'eval' + '/' + 'delta_' + str(i) + '.pt')
+            else:
+                if len(os.listdir(dir_perturbations + 'no_eval' + '/')) < len(test_loader):
+                    torch.save(delta, dir_perturbations + 'no_eval' + '/' + 'delta_' + str(i) + '.pt')
 
-        # predict and identify correctly classified samples
-        with torch.no_grad():
-            outputs = net(X+delta[0].to(device))
+            # predict and identify correctly classified samples
+            with torch.no_grad():
+                if not net.training:
+                    delta = torch.load(dir_perturbations + 'eval' + '/' + 'delta_' + str(i) + '.pt')
+                else:
+                    delta = torch.load(dir_perturbations + 'no_eval' + '/' + 'delta_' + str(i) + '.pt')
 
-        _, predicted = torch.max(outputs.data, 1)
+                outputs = net(X+delta[0])
+            _, predicted = torch.max(outputs.data, 1)
 
-        # one-hot encoded vector for correctly classified samples in the batch 
-        correct_samples[i, 0:X.size()[0]] = (predicted != y).cpu().numpy()
-        correct_samples.astype(int)
-
-        counter += np.sum(correct_samples[i, :])
-    
-    # for each iterable batch we create a smaller batch of length equal to the number 
-    # of correctly classified samples in that batch and calculate the L-infinity norm
-    # between the original sample and the adversarial sample. The ideea is that if FAB
-    # is not able to find an adversarial examples with smaller perturbation than PGD does,
-    # then this might imply that the selected samples are more globally robust, not just 
-    # based on gradient measures.
-
+            # one-hot encoded vector for correctly classified samples in the batch 
+            correct_samples[i, 0:X.size()[0]] = (predicted == y).cpu().numpy()
+            correct_samples.astype(int)
+            counter += np.sum(correct_samples[i, :])
+                                                                                                                    
+    # Run boundary attack on correctly classified samples
     for j, datapoints in enumerate(test_loader, 0):
         X, y = datapoints
         X, y = X.to(device), y.to(device)
-
-        # initialize smaller batches
-        X_positive = torch.zeros((int(np.sum(correct_samples[j, :])), X.size()[1], X.size()[2], X.size()[3]))
-        Y_positive = torch.zeros((int(np.sum(correct_samples[j, :]))))
-
-        # populate smaller batches
-        cnt = 0
-        for idx, x in enumerate(X,0):
-            if correct_samples[j, idx] == 1:
-               X_positive[cnt] = x
-               Y_positive[cnt] = y[idx]
-               cnt+=1
-
-        # FAB attack 
-        current_time = time.time()
-        print('Attacking -- FAB')
-
-        adversary = FABAttack(net, 
+        if not all_samples:
+            # populate smaller batches
+            X_positive = torch.zeros((int(np.sum(correct_samples[j, :])), X.size()[1], X.size()[2], X.size()[3]))
+            Y_positive = torch.zeros((int(np.sum(correct_samples[j, :]))))
+            cnt = 0
+            for idx, x in enumerate(X, 0):
+                if correct_samples[j, idx] == 1:
+                    X_positive[cnt] = x
+                    Y_positive[cnt] = y[idx]
+                    cnt+=1
+            X_positive = X_positive.to(device)
+            Y_positive = Y_positive.to(device)
+        else:
+            X_positive, Y_positive = X.to(device), y.to(device)
+        
+        # initialize attack
+        if attack == 'FAB':
+            '''adversary = FABAttack(net, 
                               norm='Linf',
                               n_restarts=10,
                               n_iter=150,
-                              eps=0.1,
+                              eps=FLAGS.epsilon,
                               alpha_max=0.1,
                               eta=1.05,
-                              beta=0.9,)
+                              beta=0.9, 
+                              verbose=True,
+                              min_tensor=min_tensor, 
+                              max_tensor=max_tensor)'''
+            version = 'custom'
+            adversary = AutoAttack(net, 
+                                   norm='Linf', 
+                                   eps=FLAGS.epsilon, 
+                                   version=version,
+                                   device=FLAGS.device,
+                                   min_tensor=min_tensor, 
+                                   max_tensor=max_tensor)
+            if version == 'custom':
+                adversary.attacks_to_run = ['fab']
 
-        X_positive = X_positive.to(device)
-        Y_positive = Y_positive.to(device)
+        elif attack == 'APGD':
+            print('Attack: APGD')
+            version = 'custom'
+            adversary = AutoAttack(net, 
+                                   norm='Linf', 
+                                   eps=FLAGS.epsilon, 
+                                   version=version,
+                                   device=FLAGS.device,
+                                   min_tensor=min_tensor, 
+                                   max_tensor=max_tensor)
+            if version == 'custom':
+                adversary.attacks_to_run = ['apgd-ce']
+        
+        elif attack == 'Square':
+            print('Attack: Square')
+            version = 'custom'
+            adversary = AutoAttack(net, 
+                                   norm='Linf', 
+                                   eps=FLAGS.epsilon, 
+                                   version=version,
+                                   device=FLAGS.device,
+                                   min_tensor=min_tensor, 
+                                   max_tensor=max_tensor)
+            if version == 'custom':
+                adversary.attacks_to_run = ['square']
 
-        advimg = adversary.perturb(X_positive, Y_positive)
+        elif attack == 'PGD':
+            deltas, loss_variation = pgd_linf_analysis(net, 
+                                                       X, 
+                                                       y, 
+                                                       FLAGS.epsilon, 
+                                                       max_tensor, 
+                                                       min_tensor, 
+                                                       alpha=FLAGS.epsilon/10, 
+                                                       num_iter=FLAGS.PGD_iterations) 
+            advimg = X+deltas[0]
 
+        if attack != 'PGD':
+            advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
         with torch.no_grad():
             outputs = net(advimg)
-        
         _, predicted = torch.max(outputs.data, 1)
-        
         correct += (predicted == Y_positive).sum().item()
         
-        next_time = time.time()
-        print('Attacked...')
-        print("Batch Accuracy: ", correct/np.sum(correct_samples[j, :]))
-        print("Time taken to attack {num_samples} samples (min): {time}" 
-                .format(num_samples=str(np.sum(correct_samples[j, :])), 
-                time=str((next_time-current_time)/60)))    
+        # calcluate norm if necessary
+        if attack == 'FAB':
+            dist = []
+            misclassified_dist = []
+            dist_ = []
+            misclassified_dist_ = []
 
-        dist = []
-        dist_ = []
-        pred_vector = (predicted == Y_positive)
+            pred_vector = (predicted == Y_positive)
 
-        for h, _ in enumerate(pred_vector):
+            for h, _ in enumerate(pred_vector):
+
+                np_X = X_positive[h, :, :, :].cpu().numpy()
+                # plt.imshow(np.transpose(np_X, (1, 2, 0)))
+                # plt.savefig('original_sample.png')
+
+                adv_sample = advimg[h,:, :, :]
+                np_adv_sample = adv_sample.cpu().numpy()
+                # plt.imshow(np.transpose(np_adv_sample, (1, 2, 0)))
+                # plt.savefig('adversarial_example.png')
+
+                # calculated l-infinity distance between original and adversarial image
+                if pred_vector[h]:
+                    dist.append(torch.abs((X_positive[h, :, :, :] - advimg[h, :, :, :]).view(x.size(0), -1)).max(dim=1)[0])
+                    diff = (X_positive[h, :, :, :] - advimg[h, :, :, :]).view(x.size(0), -1)
+                    flat_diff = torch.transpose(diff, 0, 1)
+                    flat_diff = torch.reshape(flat_diff, (-1,))
+                    dist_.append(LA.norm(flat_diff, float('inf')))
+                else:
+                    misclassified_dist.append(torch.abs((X_positive[h, :, :, :] - advimg[h, :, :, :]).view(x.size(0), -1)).max(dim=1)[0])
+                    diff = (X_positive[h, :, :, :] - advimg[h, :, :, :]).view(x.size(0), -1)
+                    flat_diff = torch.transpose(diff, 0, 1)
+                    flat_diff = torch.reshape(flat_diff, (-1,))
+                    misclassified_dist_.append(LA.norm(flat_diff, float('inf')))
             
-            np_X = X_positive[h, :, :, :].cpu().numpy()
-            plt.imshow(np.transpose(np_X, (1, 2, 0)))
-            plt.savefig('original_sample.png')
+            if len(dist) > 0:
+                mean_dist = sum(dist)/len(dist)
+                mean_dist_ = sum(dist_)/len(dist_)
 
-            adv_sample = advimg[h,:, :, :]
-            np_adv_sample = adv_sample.cpu().numpy()
-            plt.imshow(np.transpose(np_adv_sample, (1, 2, 0)))
-            plt.savefig('adversarial_example.png')
+            mean_misclassified_dist = sum(misclassified_dist)/len(misclassified_dist)
+            mean_misclassified_dist_ = sum(misclassified_dist_)/len(misclassified_dist_)
 
-            # calculated l-infinity distance between original and adversarial image
-            dist.append(torch.abs((X_positive[h, :, :, :] - advimg[h, :, :, :]).view(x.size(0), -1).max(dim=1)[0]))
-            dist_.append(torch.norm((X_positive[h] - advimg[h]), p=float('inf')))
+            # print("CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_dist, mean_dist_)
+            print("IN-CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_misclassified_dist, mean_misclassified_dist_)
 
-        mean_dist = sum(dist)/len(dist)
-        mean_dist_ = sum(dist_)/len(dist_)
-        print("Mean L-Infinity distance: ", mean_dist, mean_dist_)
+        counter += len(test_loader)
 
-    return correct/counter, mean_dist
+    print('ACCURACY: ', correct/counter)
+
+    return correct/counter

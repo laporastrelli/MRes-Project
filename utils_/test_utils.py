@@ -2,9 +2,13 @@ import torch.nn as nn
 import torch
 import os
 import numpy as np
+import random
+import matplotlib.pyplot as plt
 
-from utils_.adversarial_attack import fgsm, pgd_linf
+from torchvision import datasets, transforms
+from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity
 from utils_ import get_model
+from utils_.miscellaneous import get_minmax, get_path2delta
 
 #### check ####
 from advertorch.attacks import LinfPGDAttack
@@ -28,35 +32,87 @@ def test(net,
         model_path, 
         test_loader, 
         device, 
+        eval_mode=True,
         inject_noise=False,
-        noise_variance=0):
+        noise_variance=0, 
+        random_resizing=False, 
+        noise_capacity_constraint=False,
+        capacity=0,
+        get_logits=False):
 
     net.load_state_dict(torch.load(model_path))
     net.to(device)
-    net.eval()
+    if eval_mode:
+        net.eval()
     
     correct = 0
     total = 0
+
+    logits_diff = []
 
     with torch.no_grad():
         for i, data in enumerate(test_loader, 0):  
             X, y = data
             X, y = X.to(device), y.to(device)
-            
+
+            if random_resizing:
+                size = random.randint(X.shape[2]-2, X.shape[2]-1)
+                crop = transforms.RandomResizedCrop(X.shape[2]-1)
+                X_crop = crop.forward(X)
+
+                if size == X.shape[2]-2:
+                    choices = [[1, 1, 1, 1],
+                               [2, 0, 2, 0], 
+                               [2, 0, 0, 2],
+                               [0, 2, 2, 0], 
+                               [0, 2, 0, 2]] 
+                    rand_idx = random.randint(0,4)
+                    to_pad = choices[rand_idx]
+
+                elif size == X.shape[2]-1:
+                    to_pad = [0, 0, 0, 0] # l - t - r - b
+                    while sum(to_pad) < 2:
+                        rand_idx_lr = random.choice([0, 1])
+                        rand_idx_tb = random.choice([2, 3])
+                        rand_pad_side_lr = random.randint(0,1)
+                        rand_pad_side_tb = random.randint(0,1)
+
+                        if to_pad[0]+to_pad[1] == 0:
+                            to_pad[rand_idx_lr] = rand_pad_side_lr
+                        if to_pad[2]+to_pad[3] == 0:
+                            to_pad[rand_idx_tb] = rand_pad_side_tb
+
+                pad = torch.nn.ZeroPad2d(tuple(to_pad))
+                X = pad(X_crop)
             if inject_noise:
-                noisy_net = noisy_VGG(net, noise_variance=noise_variance, device=device)
+                noisy_net = noisy_VGG(net, 
+                                      eval_mode=eval_mode,
+                                      noise_variance=noise_variance, 
+                                      device=device,
+                                      capacity=capacity,
+                                      noise_capacity_constraint=noise_capacity_constraint)
                 outputs = noisy_net(X)
+
+            if get_logits:
+                outputs = net(X) 
+                for ii in range(X.size(0)):
+                    scaled_logits = torch.nn.functional.softmax(outputs[ii].data)
+                    sorted_logits, _ = torch.sort(scaled_logits, descending=True)
+                    logits_diff.append((sorted_logits[0]).cpu().numpy())
+             
             else:
                 outputs = net(X)
-
             _, predicted = torch.max(outputs.data, 1)
             total += y.size(0)
             correct += (predicted == y).sum().item()
 
     print('Test Accuracy: %d %%' % (100 * correct / total))
+    
+    # temp test
+    if get_logits:
+        np.save('./results/VGG/logits_analysis/logits_diff_0.npy', logits_diff)
 
     acc = correct / total
-
     return acc
 
 def get_layer_output(net, 
@@ -78,7 +134,6 @@ def get_layer_output(net,
     #########################################################
 
     proxy_net = proxy_VGG(net)
-
     test_layer_outputs = []
     
     with torch.no_grad():
@@ -100,20 +155,25 @@ def get_layer_output(net,
     return test_layer_outputs
 
 def adversarial_test(net, 
-                    model_path, 
-                    model_tag, 
-                    run_name, 
-                    test_loader, 
-                    PATH_to_deltas_, 
-                    device, 
-                    attack,
-                    epsilon, 
-                    num_iter,
-                    use_pop_stats=False,
-                    inject_noise=False,
-                    noise_variance=0,
-                    no_eval_clean=False,
-                    eval=True):
+                     model_path, 
+                     model_tag, 
+                     run_name, 
+                     test_loader, 
+                     PATH_to_deltas_, 
+                     device, 
+                     attack,
+                     epsilon, 
+                     num_iter,
+                     noise_capacity_constraint,
+                     capacity=0,
+                     use_pop_stats=False,
+                     inject_noise=False,
+                     noise_variance=0,
+                     no_eval_clean=False,
+                     random_resizing=False,
+                     eval=True, 
+                     custom=True,
+                     save=False):
 
     net.load_state_dict(torch.load(model_path))
     net.to(device)
@@ -121,10 +181,16 @@ def adversarial_test(net,
     ################## IMPORTANT ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
-        net = noisy_VGG(net, noise_variance=noise_variance, device=device)
+        net = noisy_VGG(net, 
+                        eval_mode=use_pop_stats,
+                        noise_variance=noise_variance, 
+                        device=device,
+                        capacity_=capacity,
+                        noise_capacity_constraint=noise_capacity_constraint)
 
     if use_pop_stats:
         net.eval()
+
     ################## IMPORTANT ##################
 
     # setting dropout to eval mode
@@ -139,21 +205,8 @@ def adversarial_test(net,
     print('average pooling training MODE:   ', net.avgpool.training)
     print('classifier training MODE:        ', net.classifier.training)
 
-    # calculating maximum pixel values to be used in PGD for clamping
-    max_ = [-100, -100, -100]
-    min_ = [100, 100, 100]
-    for _, temp_ in enumerate(test_loader, 0):
-        X, y = temp_
-        for channel in range(X.size(1)):
-            if torch.max(X[:, channel, :, :]) > max_[channel]:
-                max_[channel] = torch.max(X[:, channel, :, :])
-            if torch.min(X[:, channel, :, :]) < min_[channel]:
-                min_[channel] = torch.min(X[:, channel, :, :])
-
-    max_tensor = torch.FloatTensor(max_)[:, None, None] * torch.ones_like(X[0, :, :, :])
-    max_tensor = max_tensor.to(device)
-    min_tensor = torch.FloatTensor(min_)[:, None, None] * torch.ones_like(X[0, :, :, :])
-    min_tensor = min_tensor.to(device)
+    # getting min and max pixel values to be used in PGD for clamping
+    min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
 
     # counter for correctly classified inputs
     if isinstance(epsilon, list):
@@ -169,6 +222,38 @@ def adversarial_test(net,
         for i, data in enumerate(test_loader, 0):
             X, y = data
             X, y = X.to(device), y.to(device)
+            
+            # different modes
+            if random_resizing:
+                size = random.randint(X.shape[2]-2, X.shape[2]-1)
+                size = X.shape[2]-2
+                crop = transforms.RandomResizedCrop(X.shape[2]-2)
+                X_crop = crop.forward(X)
+
+                if size == X.shape[2]-2:
+                    choices = [[1, 1, 1, 1],
+                               [2, 0, 2, 0], 
+                               [2, 0, 0, 2],
+                               [0, 2, 2, 0], 
+                               [0, 2, 0, 2]] 
+                    rand_idx = random.randint(0,4)
+                    to_pad = choices[rand_idx]
+
+                elif size == X.shape[2]-1:
+                    to_pad = [0, 0, 0, 0] # l - t - r - b
+                    while sum(to_pad) < 2:
+                        rand_idx_lr = random.choice([0, 1])
+                        rand_idx_tb = random.choice([2, 3])
+                        rand_pad_side_lr = random.randint(0,1)
+                        rand_pad_side_tb = random.randint(0,1)
+
+                        if to_pad[0]+to_pad[1] == 0:
+                            to_pad[rand_idx_lr] = rand_pad_side_lr
+                        if to_pad[2]+to_pad[3] == 0:
+                            to_pad[rand_idx_tb] = rand_pad_side_tb
+
+                pad = torch.nn.ZeroPad2d(tuple(to_pad))
+                X = pad(X_crop)
 
             if no_eval_clean:
                 net = test_VGG(net, X)
@@ -177,47 +262,55 @@ def adversarial_test(net,
                 delta = fgsm(net, X, y, epsilon)
                     
             elif attack == 'PGD':
-                delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
-                '''VALIDTING EFFICACY OF CUSTOM PGD ATTACK BY COMPARING TO EXISTENT
-                adversary = LinfPGDAttack(
-                                net, loss_fn=nn.CrossEntropyLoss(), eps=epsilon,
-                                nb_iter=40, eps_iter=epsilon/10, rand_init=False, clip_min=-2.4291, clip_max=2.7537,
-                                targeted=False)
-                
-                adv_inputs = adversary.perturb(X, y)
-                '''
+                if custom:
+                    if i==0 and inject_noise and noise_capacity_constraint:
+                        net.set_verbose(verbose=True)
+                        delta, capacity = pgd_linf_capacity(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
+                        to_plot = []
+                        last_ = 0
+                        print('-------------------------------------------')
+                        for temp, step_capacity in enumerate(capacity):
+                            if temp>0:
+                                print(torch.equal(step_capacity['BN_0'], last_))
+                            last_ = step_capacity['BN_0']
+                            to_plot.append(step_capacity['BN_0'].mean([0, 2, 3]).cpu().detach().numpy())
 
-            # create delta model folder if not existent
-            PATH_to_deltas = PATH_to_deltas_ + model_tag
-            if not os.path.isdir(PATH_to_deltas):
-                os.mkdir(PATH_to_deltas)
+                        print(len(to_plot))
+
+                        x_axis = np.arange(len(capacity))
+                        for x_, y_ in zip(x_axis, to_plot):
+                            plt.scatter([x_] * len(y_), y_)
+
+                        plt.xticks([1, len(x_axis)])
+                        plt.savefig('./test_capacity.png')
+
+                        net.set_verbose(verbose=False)
+                    else:                            
+                        delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
+
+                    adv_inputs = X + delta[0]
+                else:
+                    adversary = LinfPGDAttack(
+                                    net, loss_fn=nn.CrossEntropyLoss(), eps=epsilon,
+                                    nb_iter=40, eps_iter=epsilon/10, rand_init=False, clip_min=min_tensor, clip_max=max_tensor,
+                                    targeted=False)
+                    adv_inputs = adversary.perturb(X, y)
+                    delta = [adv_inputs-X]
             
-            # create delta model-run folder if not existent
-            if not os.path.isdir(PATH_to_deltas + '/' + run_name):
-                os.mkdir(PATH_to_deltas + '/' + run_name )
-
-            # create delta model-run folder if not existent
-            if not os.path.isdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/'):
-                os.mkdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/')
-
-            path = PATH_to_deltas + '/' + run_name + '/' + attack + '/'
-
             # save deltas and test model on adversaries
             if len(delta) == 1:
-                eps_ = 'eps_' + str(epsilon).replace('.', '')
-                if not os.path.isdir(path + '/' + eps_ + '/'):
-                    os.mkdir(path + '/' + eps_ + '/')
-
-                torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth") 
+                if save:
+                    path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack)
+                    eps_ = 'eps_' + str(epsilon).replace('.', '')
+                    if not os.path.isdir(path + '/' + eps_ + '/'):
+                        os.mkdir(path + '/' + eps_ + '/')
+                    torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth") 
                 
-                ###### IMPORTANT ######
                 if use_pop_stats:
                     net.eval()
-                ###### IMPORTANT ######
 
                 with torch.no_grad():
-                    outputs = net(X+delta[0])
-                    # outputs = net(adv_inputs)
+                    outputs = net(adv_inputs)
                 
                 _, predicted = torch.max(outputs.data, 1)
                 total += y.size(0)
@@ -240,7 +333,8 @@ def adversarial_test(net,
 
                     _, predicted = torch.max(outputs.data, 1)
                     correct_s[0, k] += (predicted == y).sum().item()
-            # total += y.size(0)
+    
+    # adversarial evaluation if delta is given
     else:
         if isinstance(epsilon, list):
             correct_s = np.zeros((1, len(epsilon)))
@@ -274,7 +368,6 @@ def adversarial_test(net,
             total += y.size(0)
 
     acc = correct_s / total
-
     print('Adversarial Test Accuracy: ', acc)
 
     if isinstance(epsilon, list):

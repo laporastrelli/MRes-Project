@@ -133,6 +133,7 @@ dmypy.json
 
 # images
 *.jpg
+*.png
 
 # numpy
 *.npy
@@ -149,7 +150,12 @@ results/
 sample_delta/
 advertorch/
 advertorch_/
+auto_attack/
+autoattack/
 scripts/
+entropy_analysis/
+runnables/
+
 
 # Files
 scripts/schedule.txt
