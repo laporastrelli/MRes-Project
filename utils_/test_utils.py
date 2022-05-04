@@ -1,3 +1,4 @@
+from bleach import clean
 import torch.nn as nn
 import torch
 import os
@@ -32,6 +33,7 @@ def test(net,
         model_path, 
         test_loader, 
         device, 
+        run_name,
         eval_mode=True,
         inject_noise=False,
         noise_variance=0, 
@@ -44,74 +46,122 @@ def test(net,
     net.to(device)
     if eval_mode:
         net.eval()
-    
     correct = 0
     total = 0
 
-    logits_diff = []
+    for i, data in enumerate(test_loader, 0):  
+        X, y = data
+        X, y = X.to(device), y.to(device)
 
-    with torch.no_grad():
-        for i, data in enumerate(test_loader, 0):  
-            X, y = data
-            X, y = X.to(device), y.to(device)
+        if random_resizing:
+            size = random.randint(X.shape[2]-2, X.shape[2]-1)
+            crop = transforms.RandomResizedCrop(X.shape[2]-1)
+            X_crop = crop.forward(X)
 
-            if random_resizing:
-                size = random.randint(X.shape[2]-2, X.shape[2]-1)
-                crop = transforms.RandomResizedCrop(X.shape[2]-1)
-                X_crop = crop.forward(X)
+            if size == X.shape[2]-2:
+                choices = [[1, 1, 1, 1],
+                            [2, 0, 2, 0], 
+                            [2, 0, 0, 2],
+                            [0, 2, 2, 0], 
+                            [0, 2, 0, 2]] 
+                rand_idx = random.randint(0,4)
+                to_pad = choices[rand_idx]
 
-                if size == X.shape[2]-2:
-                    choices = [[1, 1, 1, 1],
-                               [2, 0, 2, 0], 
-                               [2, 0, 0, 2],
-                               [0, 2, 2, 0], 
-                               [0, 2, 0, 2]] 
-                    rand_idx = random.randint(0,4)
-                    to_pad = choices[rand_idx]
+            elif size == X.shape[2]-1:
+                to_pad = [0, 0, 0, 0] # l - t - r - b
+                while sum(to_pad) < 2:
+                    rand_idx_lr = random.choice([0, 1])
+                    rand_idx_tb = random.choice([2, 3])
+                    rand_pad_side_lr = random.randint(0,1)
+                    rand_pad_side_tb = random.randint(0,1)
 
-                elif size == X.shape[2]-1:
-                    to_pad = [0, 0, 0, 0] # l - t - r - b
-                    while sum(to_pad) < 2:
-                        rand_idx_lr = random.choice([0, 1])
-                        rand_idx_tb = random.choice([2, 3])
-                        rand_pad_side_lr = random.randint(0,1)
-                        rand_pad_side_tb = random.randint(0,1)
+                    if to_pad[0]+to_pad[1] == 0:
+                        to_pad[rand_idx_lr] = rand_pad_side_lr
+                    if to_pad[2]+to_pad[3] == 0:
+                        to_pad[rand_idx_tb] = rand_pad_side_tb
 
-                        if to_pad[0]+to_pad[1] == 0:
-                            to_pad[rand_idx_lr] = rand_pad_side_lr
-                        if to_pad[2]+to_pad[3] == 0:
-                            to_pad[rand_idx_tb] = rand_pad_side_tb
+            pad = torch.nn.ZeroPad2d(tuple(to_pad))
+            X = pad(X_crop)
+        if inject_noise:
+            noisy_net = noisy_VGG(net, 
+                                    eval_mode=eval_mode,
+                                    noise_variance=noise_variance, 
+                                    device=device,
+                                    capacity=capacity,
+                                    noise_capacity_constraint=noise_capacity_constraint)
+            outputs = noisy_net(X)
+        if get_logits:
 
-                pad = torch.nn.ZeroPad2d(tuple(to_pad))
-                X = pad(X_crop)
-            if inject_noise:
-                noisy_net = noisy_VGG(net, 
-                                      eval_mode=eval_mode,
-                                      noise_variance=noise_variance, 
-                                      device=device,
-                                      capacity=capacity,
-                                      noise_capacity_constraint=noise_capacity_constraint)
-                outputs = noisy_net(X)
+            if i == 10:
+                acc = 0
+                break
 
-            if get_logits:
-                outputs = net(X) 
-                for ii in range(X.size(0)):
-                    scaled_logits = torch.nn.functional.softmax(outputs[ii].data)
-                    sorted_logits, _ = torch.sort(scaled_logits, descending=True)
-                    logits_diff.append((sorted_logits[0]).cpu().numpy())
-             
-            else:
-                outputs = net(X)
+            # utils
+            logits_diff_correct = []
+            logits_diff_incorrect = []
+
+            # get clean outputs
+            outputs = net(X) 
             _, predicted = torch.max(outputs.data, 1)
-            total += y.size(0)
-            correct += (predicted == y).sum().item()
+
+            print(net.parameters())
+
+            for ii in range(X.size(0)):
+                scaled_logits = torch.nn.functional.softmax(outputs[ii].data)
+                sorted_logits, _ = torch.sort(scaled_logits, descending=True)
+                if predicted[ii] == y[ii] and sorted_logits[0] == float(1):
+                    sample = torch.unsqueeze(X[ii], 0)
+                    label = torch.unsqueeze(y[ii], 0)
+                    loss_before = nn.CrossEntropyLoss()(net(sample)/10 , label)
+                    print('LOSS BEFORE: ', loss_before)
+
+                    delta = torch.zeros_like(sample, requires_grad=True)
+                    loss_after = nn.CrossEntropyLoss()(net(sample + delta)/10 , label)
+                    loss_after.backward()
+
+                    if torch.equal(loss_after, torch.zeros_like(loss_after)):
+                        print(torch.max(delta.grad.detach()))
+                    
+                    print('LOSS AFTER: ', loss_after)
+
+            # run adversarial attack
+            epsilon = 0.0392
+            min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+            delta = pgd_linf(net, 
+                             X, 
+                             y, 
+                             epsilon, 
+                             max_tensor, 
+                             min_tensor, 
+                             alpha=epsilon/10, 
+                             num_iter=40)
+            adv_outputs = net(X+delta[0])
+            _, adv_predicted = torch.max(adv_outputs.data, 1)
+            
+            # partition correct and incorrect PGD logits
+            for ii in range(X.size(0)):
+                scaled_logits = torch.nn.functional.softmax(outputs[ii].data)
+                sorted_logits, _ = torch.sort(scaled_logits, descending=True)
+                if predicted[ii] == y[ii] and adv_predicted[ii] == y[ii]:
+                    logits_diff_correct.append((sorted_logits[0]).cpu().numpy())
+                elif predicted[ii] == y[ii] and adv_predicted[ii] != y[ii]:
+                    logits_diff_incorrect.append((sorted_logits[0]).cpu().numpy())
+            
+            if not os.path.isdir('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name):
+                os.mkdir('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name)
+
+            np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_correct_' + str(i) + '.npy', np.asarray(logits_diff_correct))
+            np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_incorrect_' + str(i) + '.npy', np.asarray(logits_diff_incorrect))
+
+        else:
+            outputs = net(X)
+        _, predicted = torch.max(outputs.data, 1)
+
+        total += y.size(0)
+        correct += (predicted == y).sum().item()
 
     print('Test Accuracy: %d %%' % (100 * correct / total))
-    
-    # temp test
-    if get_logits:
-        np.save('./results/VGG/logits_analysis/logits_diff_0.npy', logits_diff)
-
+       
     acc = correct / total
     return acc
 

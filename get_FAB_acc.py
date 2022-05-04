@@ -23,10 +23,10 @@ from datetime import datetime
 from utils_ import load_data, utils_flags, test_utils
 from absl import app
 from absl import flags
-from advertorch.attacks import FABAttack, LinfFABAttack
+# from advertorch.attacks import FABAttack, LinfFABAttack
 from autoattack import AutoAttack
 from utils_.get_model import get_model
-from utils_.adversarial_attack import pgd_linf, pgd_linf_analysis
+from utils_.adversarial_attack import pgd_linf, pgd_linf_loss_analysis, pgd_linf_grad_analysis
 from utils_.miscellaneous import get_bn_config, get_minmax, get_model_name, get_model_path, set_eval_mode
 from torch import linalg as LA
 
@@ -65,7 +65,9 @@ def get_FAB_acc(run_name, attack, verbose=True):
     counter = 0
     correct_samples = np.zeros((len(test_loader), FLAGS.batch_size))
     min_tensor, max_tensor = get_minmax(test_loader, device)
-    all_samples = True    
+    all_samples = True  
+    loss_analysis = False # TODO: make it FLAGS
+    grad_analysis = False # TODO: make it FLAGS
 
     # First run PGD and identify for each batch the correctly classified samples
     if not all_samples:
@@ -164,8 +166,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
             if version == 'custom':
                 adversary.attacks_to_run = ['fab']
 
-        elif attack == 'APGD':
-            print('Attack: APGD')
+        elif attack.find('APGD') != -1:
             version = 'custom'
             adversary = AutoAttack(net, 
                                    norm='Linf', 
@@ -174,40 +175,85 @@ def get_FAB_acc(run_name, attack, verbose=True):
                                    device=FLAGS.device,
                                    min_tensor=min_tensor, 
                                    max_tensor=max_tensor)
+
             if version == 'custom':
-                adversary.attacks_to_run = ['apgd-ce']
+                if attack == 'APGD-DLR':
+                    adversary.attacks_to_run = ['apgd-dlr']
+                elif attack == 'APGD-CE':
+                    adversary.attacks_to_run = ['apgd-ce']
         
         elif attack == 'Square':
-            print('Attack: Square')
             version = 'custom'
             adversary = AutoAttack(net, 
                                    norm='Linf', 
                                    eps=FLAGS.epsilon, 
                                    version=version,
                                    device=FLAGS.device,
+                                   verbose=True,
                                    min_tensor=min_tensor, 
                                    max_tensor=max_tensor)
             if version == 'custom':
                 adversary.attacks_to_run = ['square']
 
         elif attack == 'PGD':
-            deltas, loss_variation = pgd_linf_analysis(net, 
-                                                       X, 
-                                                       y, 
-                                                       FLAGS.epsilon, 
-                                                       max_tensor, 
-                                                       min_tensor, 
-                                                       alpha=FLAGS.epsilon/10, 
-                                                       num_iter=FLAGS.PGD_iterations) 
-            advimg = X+deltas[0]
-
+            if loss_analysis:
+                if j < 5:
+                    deltas, step_loss = pgd_linf_loss_analysis(net, 
+                                                               X, 
+                                                               y, 
+                                                               FLAGS.epsilon, 
+                                                               max_tensor, 
+                                                               min_tensor, 
+                                                               alpha=FLAGS.epsilon/10, 
+                                                               num_iter=FLAGS.PGD_iterations)
+                    if not os.path.isdir('./results/VGG/loss_landscape/' + run_name):
+                        os.mkdir('./results/VGG/loss_landscape/' + run_name)
+                    np.save('./results/VGG/loss_landscape/' + run_name + '/step_loss_' + str(j) + '.npy', step_loss)
+                    fig = plt.figure()
+                    for k, loss_per_step in enumerate(step_loss):
+                        x_axis = np.arange(k*step_loss.shape[1], k*step_loss.shape[1] + step_loss.shape[1], 1)
+                        plt.plot(x_axis, loss_per_step)
+                        plt.xlabel('iteration')
+                        plt.ylabel('loss')
+                    plt.savefig('./results/VGG/loss_landscape/' + run_name + '/step_loss_' + str(j) + '.jpg')
+                else:
+                    deltas = [torch.zeros_like(X)]
+                advimg = X+deltas[0]
+           
+            elif grad_analysis:
+                if j < 5:
+                    deltas, step_norm = pgd_linf_grad_analysis(net, 
+                                                               X, 
+                                                               y, 
+                                                               FLAGS.epsilon, 
+                                                               max_tensor, 
+                                                               min_tensor, 
+                                                               alpha=FLAGS.epsilon/10, 
+                                                               num_iter=FLAGS.PGD_iterations)
+                    if not os.path.isdir('./results/VGG/gradient_predictiveness/' + run_name):
+                        os.mkdir('./results/VGG/gradient_predictiveness/' + run_name)
+                    np.save('./results/VGG/gradient_predictiveness/' + run_name + '/step_norm_' + str(j) + '.npy', step_norm)
+                    fig = plt.figure()
+                    for k, norm_per_step in enumerate(step_norm):
+                        x_axis = np.arange(k*step_norm.shape[1], k*step_norm.shape[1] + step_norm.shape[1], 1)
+                        plt.plot(x_axis, norm_per_step)
+                        plt.xlabel('iteration')
+                        plt.ylabel('gradient norm')
+                    plt.savefig('./results/VGG/gradient_predictiveness/' + run_name + '/step_norm_' + str(j) + '.jpg')
+                else:
+                    deltas = [torch.zeros_like(X)]
+                advimg = X+deltas[0]
+        
+        # employ attack
         if attack != 'PGD':
             advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
         with torch.no_grad():
             outputs = net(advimg)
         _, predicted = torch.max(outputs.data, 1)
-        correct += (predicted == Y_positive).sum().item()
         
+        correct += (predicted == Y_positive).sum().item()
+        counter += X.shape[0]
+
         # calcluate norm if necessary
         if attack == 'FAB':
             dist = []
@@ -251,8 +297,6 @@ def get_FAB_acc(run_name, attack, verbose=True):
 
             # print("CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_dist, mean_dist_)
             print("IN-CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_misclassified_dist, mean_misclassified_dist_)
-
-        counter += len(test_loader)
 
     print('ACCURACY: ', correct/counter)
 

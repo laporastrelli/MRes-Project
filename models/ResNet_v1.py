@@ -217,7 +217,6 @@ class Bottleneck(nn.Module):
             out = self.activation_fn(out)
         return out
 
-
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, where_bn, num_classes=10, normalization="bn", activation="relu"):
         super(ResNet, self).__init__()
