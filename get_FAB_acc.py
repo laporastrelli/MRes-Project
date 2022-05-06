@@ -63,6 +63,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
     # initialize helper vars
     correct = 0
     counter = 0
+    correct_clean = 0
     correct_samples = np.zeros((len(test_loader), FLAGS.batch_size))
     min_tensor, max_tensor = get_minmax(test_loader, device)
     all_samples = True  
@@ -189,6 +190,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
                                    eps=FLAGS.epsilon, 
                                    version=version,
                                    device=FLAGS.device,
+                                   verbose=True,
                                    min_tensor=min_tensor, 
                                    max_tensor=max_tensor)
             if version == 'custom':
@@ -248,8 +250,14 @@ def get_FAB_acc(run_name, attack, verbose=True):
             advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
         with torch.no_grad():
             outputs = net(advimg)
+            outputs_clean = net(X_positive)
+        
+        _, predicted_clean = torch.max(outputs_clean.data, 1)
         _, predicted = torch.max(outputs.data, 1)
-        correct += (predicted == Y_positive).sum().item()
+        
+        correct_clean += (predicted_clean == Y_positive).sum().item()
+
+        correct += (torch.logical_and(predicted == Y_positive, predicted_clean == Y_positive)).sum().item()
         counter += X.shape[0]
 
         # calcluate norm if necessary
@@ -296,6 +304,6 @@ def get_FAB_acc(run_name, attack, verbose=True):
             # print("CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_dist, mean_dist_)
             print("IN-CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_misclassified_dist, mean_misclassified_dist_)
 
-    print('ACCURACY: ', correct/counter)
+    print('ACCURACY: ', correct/correct_clean)
 
-    return correct/counter
+    return correct/correct_clean

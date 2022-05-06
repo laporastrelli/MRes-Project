@@ -21,10 +21,6 @@ columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization',
                'Training Mode', 'Test Accuracy', 'Epsilon Budget',
                'PGD - 0.1', 'PGD - 0.0313', 'PGD - 0.5', 'PGD - 0.1565']
 
-root_columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-                    'Training Mode', 'Test Accuracy']
-
-
 def main(argv):
     
     del argv
@@ -125,7 +121,7 @@ def main(argv):
                     dict_name = attack + '-' + str(FLAGS.epsilon)
                     adv_accs[dict_name] = test(index, adversarial=True)
                     
-            if attack in ['FAB', 'APGD-CE', 'APGD-DLR', 'Square', 'PGD']:
+            if attack in ['FAB', 'APGD-CE', 'APGD-DLR', 'Square', '-PGD']:
                 for eps in FLAGS.epsilon_in:
                     FLAGS.epsilon = float(eps)
                     dict_name = attack + '-' + str(FLAGS.epsilon)
@@ -199,4 +195,5 @@ def main(argv):
 
 if __name__ == '__main__':
     app.run(main)
+
 
