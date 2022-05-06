@@ -11,7 +11,6 @@ import os
 import time 
 import torchvision.models as models
 import pandas as pd
-
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -51,17 +50,12 @@ def train(model_name, where_bn):
 
     # create run name to contain info about where the BN layer is 
     run_name = FLAGS.model_name + '_' + bn + '_' + dt_string
-
-    '''if FLAGS.model_name == 'ResNet50':
+    if FLAGS.model_name == 'ResNet50':
         if FLAGS.version == 2:
-            run_name = FLAGS.model_name + 'v' + str(FLAGS.version) + '_' + bn + '_' + dt_string'''
-
-    # create run name (Tensorboard)
+            run_name = FLAGS.model_name + 'v' + str(FLAGS.version) + '_' + bn + '_' + dt_string
     writer = SummaryWriter('./runs/' + run_name)
-    
-    # set paths
     PATH_to_model = FLAGS.root_path + '/models/' + FLAGS.model_name + '/' + run_name + '.pth'
-
+    
     net = get_model.get_model(FLAGS.model_name, FLAGS.where_bn)
 
     # train model

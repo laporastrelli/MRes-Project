@@ -1,6 +1,8 @@
 from tkinter.tix import Tree
+from turtle import clear
 import torch 
 import torch.nn as nn
+import torch.linalg as la
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,31 +30,91 @@ def pgd_linf(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     deltas.append(delta.detach())
     return deltas
 
-def pgd_linf_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_loss_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
-    loss_variation = []
     delta = torch.zeros_like(X, requires_grad=True)
+    temp_delta = torch.zeros_like(X, requires_grad=True)
+    orig_delta = torch.zeros_like(X, requires_grad=True)
+    temp_grad = torch.zeros_like(X, requires_grad=True)
+    start, end = 90, 1
+    second_range = np.arange(1.0, 0.1, -0.012)
+    step_loss = np.zeros((num_iter, len(range(start, end, -1)) + len(second_range)))
+    full_range = np.concatenate([range(start, end, -1), second_range])
+
+    model.classifier.eval()
+
     for t in range(num_iter):
+        print('PGD step: ', t)
+
+        # compute gradients
+        orig_delta = delta.detach()
         loss = nn.CrossEntropyLoss()(model(X + delta), y)
         loss.backward()
-        delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+
+        # compute perturbations
+        temp_grad = delta.grad.detach().sign()
+        delta.data = (delta + alpha*temp_grad).clamp(-epsilon,epsilon)
         delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
+
+        print('Loss at step {t}: {l}'.format(t=t, l=nn.CrossEntropyLoss()(model(X + delta), y)))
         
-        temp_grad = delta.grad.detach()
-        temp_loss = []
-        prev_X = torch.zeros_like(delta.data)
-        for step in range(250, 10, -10):
-            temp_X = torch.clamp(X + (1/step)*temp_grad, min=min_, max=max_) 
-            #print(torch.equal(temp_X, prev_X))
-            prev_X = temp_X
-            temp_loss.append(nn.CrossEntropyLoss()(model(X + (temp_X-X)), y).detach().cpu().numpy())
-        loss_variation += np.var(temp_loss)
+        for k, step in enumerate(full_range):
+            temp_delta.data = (orig_delta + (1/step)*alpha*temp_grad).clamp(-epsilon, epsilon)
+            temp_delta.data = torch.clamp(X.data + temp_delta.data, min=min_, max=max_) - X.data
+            step_loss[t, k] = nn.CrossEntropyLoss()(model(X + temp_delta), y).detach().cpu().numpy()
+        
+        print('Max Loss along gradient step {step}: {loss_}' \
+              .format(step=step_loss[t, :].tolist().index(np.max(step_loss[t, :])), \
+              loss_=step_loss[t, step_loss[t, :].tolist().index(np.max(step_loss[t, :]))]))
 
         delta.grad.zero_()
         
     deltas.append(delta.detach())
-    return deltas, loss_variation
+    return deltas, step_loss
+
+def pgd_linf_grad_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+    """ Construct FGSM adversarial examples on the examples X"""
+    deltas = []
+    delta = torch.zeros_like(X, requires_grad=True)
+    temp_delta = torch.zeros_like(X, requires_grad=True)
+    orig_delta = torch.zeros_like(X, requires_grad=True)
+    prev_delta = torch.zeros_like(X, requires_grad=True)
+    temp_grad = torch.zeros_like(X, requires_grad=True)
+    start, end = 90, 1
+    second_range = np.arange(1.0, 0.1, -0.012)
+    step_norm = np.zeros((num_iter, len(range(start, end, -1)) + len(second_range)))
+    full_range = np.concatenate([range(start, end, -1), second_range])
+
+    model.classifier.eval()
+
+    for t in range(num_iter):
+        print('PGD step: ', t)
+
+        orig_delta = delta.detach()
+        loss = nn.CrossEntropyLoss()(model(X + delta), y)
+        loss.backward()
+
+        temp_grad = delta.grad.detach().sign()
+        delta.data = (delta + alpha*temp_grad).clamp(-epsilon, epsilon)
+        delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
+
+        for k, step in enumerate(full_range):
+            temp_delta.data = (orig_delta + (1/step)*alpha*temp_grad).clamp(-epsilon, epsilon)
+            temp_delta.data = torch.clamp(X.data + temp_delta.data, min=min_, max=max_) - X.data
+
+            step_loss = nn.CrossEntropyLoss()(model(X + temp_delta), y)
+            step_loss.backward() 
+            local_grad = temp_delta.grad.detach().sign()
+
+            step_norm[t, k] = la.norm(local_grad - temp_grad)
+
+            temp_delta.grad.zero_()
+
+        delta.grad.zero_()  
+
+    deltas.append(delta.detach())
+    return deltas, step_norm
 
 def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""

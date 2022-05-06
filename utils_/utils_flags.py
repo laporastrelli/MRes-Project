@@ -11,8 +11,8 @@ flags.DEFINE_string('model_name', None, 'model name among available models')
 flags.DEFINE_integer('version', None, 'model version to use (only for ResNet)')
 flags.DEFINE_integer('batch_size', 128, 'batch size for training')
 flags.DEFINE_string('dataset', None, 'dataset to use')
-flags.DEFINE_string('dataset_path', '/data2/users/lr4617/data/', 'path to dataset')
-flags.DEFINE_string('root_path', '/data2/users/lr4617', 'path to root directory')
+flags.DEFINE_string('root_path', '/vol/bitbucket/lr4617', 'path to root directory')
+flags.DEFINE_string('dataset_path', '/vol/bitbucket/lr4617/data/', 'path to dataset')
 flags.DEFINE_string('csv_path', None, 'path to csv results file')
 
 flags.DEFINE_bool('train', None, 'decide whether to train or not')
@@ -52,10 +52,5 @@ flags.DEFINE_list('input_size', None, 'temp')
 
 # run this to test script logistics
 flags.DEFINE_bool('test_run', False, 'variable for running test run of some new feature')
-
-
-flags.mark_flag_as_required('model_name')
-flags.mark_flag_as_required('train')
-flags.mark_flag_as_required('load_pretrained')
 
 FLAGS = flags.FLAGS

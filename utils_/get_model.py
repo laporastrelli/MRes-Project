@@ -25,17 +25,17 @@ def get_model(model_name, where_bn):
             else:
                 net = ResNet_v1.ResNet50(where_bn=where_bn)
     
-    if model_name == 'ResNet101':
+    if model_name == 'ResNet34':
         if sum(where_bn)>1:
             if int(FLAGS.version) == 2:
                 net = ResNet_v2.Resnet101(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet101(where_bn=where_bn)
+                net = ResNet_v1.ResNet34(where_bn=where_bn)
         else:
             if int(FLAGS.version) == 2:
                 net = ResNet_v2.resnet101(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet101(where_bn=where_bn)
+                net = ResNet_v1.ResNet34(where_bn=where_bn)
 
     elif model_name == 'VGG19':
         if sum(where_bn)==0:

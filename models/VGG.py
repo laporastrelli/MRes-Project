@@ -177,7 +177,7 @@ def vgg13_bn(pretrained=False, progress=True, **kwargs):
 # Note: any of the above permutation is applicable.
 ###############################################################
 
-def vgg16(where_bn, pretrained=False, progress=True, **kwargs):
+def vgg16(where_bn, normalization='bn', pretrained=False, progress=True, **kwargs):
     r"""VGG 16-layer model (configuration "D")
     `"Very Deep Convolutional Networks For Large-Scale Image Recognition" <https://arxiv.org/pdf/1409.1556.pdf>`_
 
@@ -185,10 +185,9 @@ def vgg16(where_bn, pretrained=False, progress=True, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _vgg('vgg16', 'D', False, pretrained, progress, where_bn, **kwargs)
+    return _vgg('vgg16', 'D', False, pretrained, progress, where_bn, normalization, **kwargs)
 
-
-def vgg16_bn(where_bn=[1,1,1,1,1], pretrained=False, progress=True, **kwargs):
+def vgg16_bn(where_bn=[1,1,1,1,1], normalization='bn', pretrained=False, progress=True, **kwargs):
     r"""VGG 16-layer model (configuration "D") with batch normalization
     `"Very Deep Convolutional Networks For Large-Scale Image Recognition" <https://arxiv.org/pdf/1409.1556.pdf>`_
 
@@ -196,7 +195,7 @@ def vgg16_bn(where_bn=[1,1,1,1,1], pretrained=False, progress=True, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _vgg('vgg16_bn', 'D', True, pretrained, progress, where_bn, **kwargs)
+    return _vgg('vgg16_bn', 'D', True, pretrained, progress, where_bn, normalization, **kwargs)
 
 
 def vgg19(where_bn, normalization='bn',  pretrained=False, progress=True, **kwargs):
@@ -208,7 +207,6 @@ def vgg19(where_bn, normalization='bn',  pretrained=False, progress=True, **kwar
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _vgg('vgg19', 'E', False, pretrained, progress, where_bn, normalization, **kwargs)
-
 
 def vgg19_bn(where_bn=[1,1,1,1,1], normalization='bn', pretrained=False, progress=True, **kwargs):
     r"""VGG 19-layer model (configuration 'E') with batch normalization

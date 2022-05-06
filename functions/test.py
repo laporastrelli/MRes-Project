@@ -59,6 +59,7 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                    PATH_to_model, 
                                    test_loader, 
                                    device, 
+                                   run_name=run_name,
                                    eval_mode=FLAGS.use_pop_stats,
                                    inject_noise=FLAGS.test_noisy, 
                                    noise_variance=FLAGS.noise_variance, 
