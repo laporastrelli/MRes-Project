@@ -244,16 +244,19 @@ def adversarial_test(net,
     ################## IMPORTANT ##################
 
     # setting dropout to eval mode
-    net.classifier.eval()
+    if run_name.find('VGG')!= -1:
+        net.classifier.eval()
 
     # printing info
     print('eval MODE:                       ', use_pop_stats)
     print('inject noise MODE:               ', inject_noise)
     print('test on clean batch stats MODE:  ', no_eval_clean)
     print('---------------------------------')
-    print('features training MODE:          ', net.features.training)
-    print('average pooling training MODE:   ', net.avgpool.training)
-    print('classifier training MODE:        ', net.classifier.training)
+
+    if run_name.find('VGG')!= -1:
+        print('features training MODE:          ', net.features.training)
+        print('average pooling training MODE:   ', net.avgpool.training)
+        print('classifier training MODE:        ', net.classifier.training)
 
     # getting min and max pixel values to be used in PGD for clamping
     min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
@@ -266,6 +269,7 @@ def adversarial_test(net,
     
     # counter for number of samples
     total = 0
+    correct_clean = 0
 
     # adversarial evaluation
     if eval:
@@ -337,7 +341,6 @@ def adversarial_test(net,
                         net.set_verbose(verbose=False)
                     else:                            
                         delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
-
                     adv_inputs = X + delta[0]
                 else:
                     adversary = LinfPGDAttack(
@@ -349,7 +352,7 @@ def adversarial_test(net,
             
             # save deltas and test model on adversaries
             if len(delta) == 1:
-                if save:
+                if save:     
                     path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack)
                     eps_ = 'eps_' + str(epsilon).replace('.', '')
                     if not os.path.isdir(path + '/' + eps_ + '/'):
@@ -361,10 +364,15 @@ def adversarial_test(net,
 
                 with torch.no_grad():
                     outputs = net(adv_inputs)
-                
+                    outputs_clean = net(X)
+        
+                _, predicted_clean = torch.max(outputs_clean.data, 1)
                 _, predicted = torch.max(outputs.data, 1)
+                
+                correct_clean += (predicted_clean == y).sum().item()
+
                 total += y.size(0)
-                correct_s += (predicted == y).sum().item()
+                correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
 
             # if multiples epsilons are used save each of them and test model on adversaries
             else:
@@ -417,7 +425,7 @@ def adversarial_test(net,
 
             total += y.size(0)
 
-    acc = correct_s / total
+    acc = correct_s / correct_clean
     print('Adversarial Test Accuracy: ', acc)
 
     if isinstance(epsilon, list):

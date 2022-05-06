@@ -1,6 +1,5 @@
 ############ IMPORTS ############
 from webbrowser import get
-import pandas as pd
 import os
 import numpy as np
 import csv
@@ -21,10 +20,6 @@ from utils_.miscellaneous import get_epsilon_budget, get_bn_int_from_name, get_b
 columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                'Training Mode', 'Test Accuracy', 'Epsilon Budget',
                'PGD - 0.1', 'PGD - 0.0313', 'PGD - 0.5', 'PGD - 0.1565']
-
-root_columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-                    'Training Mode', 'Test Accuracy']
-
 
 def main(argv):
     
