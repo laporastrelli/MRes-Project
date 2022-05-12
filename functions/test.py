@@ -37,20 +37,10 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
     FLAGS = flags.FLAGS
 
     outputs = []
-    
-    # choose device
     device = torch.device(FLAGS.device if torch.cuda.is_available() else "cpu")
-
-    # load dataset
     _, test_loader = load_data.get_data()
-    
-    # retrive model specs from run_name
     model_name, where_bn = get_model_specs(run_name)
-
-    # re initialize model to apply saved weights
     net = get_model(model_name, where_bn)
-
-    # set model path
     PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     
     # test model (standard)
@@ -108,6 +98,7 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    num_iter=FLAGS.PGD_iterations,
                                                    capacity=FLAGS.capacity,
                                                    noise_capacity_constraint=FLAGS.noise_capacity_constraint,
+                                                   capacity_calculation=FLAGS.capacity_calculation,
                                                    use_pop_stats=FLAGS.use_pop_stats,
                                                    inject_noise=FLAGS.test_noisy, 
                                                    noise_variance=FLAGS.noise_variance, 

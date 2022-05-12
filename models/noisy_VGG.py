@@ -36,7 +36,8 @@ class noisy_VGG(nn.Module):
                  device, 
                  capacity_,
                  noise_capacity_constraint, 
-                 mode=''):
+                 mode='', 
+                 verbose=False):
 
         super(noisy_VGG, self).__init__()
 
@@ -47,6 +48,7 @@ class noisy_VGG(nn.Module):
         self.mode = mode
         self.temp_net = net
         self.capacity = {}
+        self.verbose = verbose
 
         features = list(net.features)
         
@@ -95,9 +97,7 @@ class noisy_VGG(nn.Module):
                         running_var.copy_(updated_running_var)
                     else:
                         x = x + noise[None, :, None, None].to(self.device)
-                
                 bn_count += 1
-
             x = model(x)
 
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d) and FLAGS.noise_after_BN:
@@ -108,7 +108,6 @@ class noisy_VGG(nn.Module):
         out = self.classifier(x)
 
         return out
-
 
     def get_capacity(self):
         return self.capacity

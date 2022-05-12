@@ -7,6 +7,8 @@ import torch.linalg as la
 import numpy as np
 import matplotlib.pyplot as plt
 
+from .miscellaneous import get_bn_int_from_name
+
 def fgsm(model, X, y, epsilon):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
@@ -116,10 +118,9 @@ def pgd_linf_grad_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     deltas.append(delta.detach())
     return deltas, step_norm
 
-def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
-    capacities = []
     delta = torch.zeros_like(X, requires_grad=True)
     last_ = 0
     for t in range(num_iter): 
@@ -131,7 +132,6 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
         # getting capacity
         temp = model.get_capacity()['BN_0']
-        capacities.append(temp)
 
         if t>0:
             diff = temp - last_
@@ -150,6 +150,26 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter):
             plt.scatter([x_] * len(y_), y_)
             plt.xticks([1, t+1])
             plt.savefig('./test_capacity__.png')
+
+    deltas.append(delta.detach())
+
+    return deltas
+
+def pgd_linf_capacity(model, run_name, X, y,  epsilon, max_, min_, alpha, num_iter):
+    """ Construct PGD adversarial examples on the examples X"""
+    deltas = []
+    capacities = []
+    delta = torch.zeros_like(X, requires_grad=True)
+    for t in range(num_iter): 
+        loss = nn.CrossEntropyLoss()(model(X + delta), y)
+        loss.backward()
+        delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+        delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
+        delta.grad.zero_()
+
+        # getting capacity
+        temp = model.get_capacity()['BN_0']
+        capacities.append(temp.cpu().detach().numpy())
 
     deltas.append(delta.detach())
 

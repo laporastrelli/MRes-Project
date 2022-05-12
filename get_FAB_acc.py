@@ -29,6 +29,7 @@ from utils_.get_model import get_model
 from utils_.adversarial_attack import pgd_linf, pgd_linf_loss_analysis, pgd_linf_grad_analysis
 from utils_.miscellaneous import get_bn_config, get_minmax, get_model_name, get_model_path, set_eval_mode
 from torch import linalg as LA
+from models.noisy_VGG import noisy_VGG
 
 def get_FAB_acc(run_name, attack, verbose=True):
 
@@ -51,8 +52,17 @@ def get_FAB_acc(run_name, attack, verbose=True):
     net = get_model(model_name, where_bn)
     PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     net.load_state_dict(torch.load(PATH_to_model))
-    set_eval_mode(net, FLAGS.use_pop_stats)
     net.to(device)
+    set_eval_mode(net, FLAGS.use_pop_stats)
+
+    if FLAGS.test_noisy and FLAGS.noise_before_PGD:
+        print('Adversarial Test With Noise ...')
+        net = noisy_VGG(net, 
+                        eval_mode=FLAGS.use_pop_stats,
+                        noise_variance=FLAGS.noise_variance, 
+                        device=device,
+                        capacity_=FLAGS.capacity,
+                        noise_capacity_constraint=FLAGS.noise_capacity_constraint)
 
     if verbose:
         if not net.training:
@@ -93,13 +103,13 @@ def get_FAB_acc(run_name, attack, verbose=True):
             # compute adversarial examples
             if run:
                 delta = pgd_linf(net, 
-                                X, 
-                                y, 
-                                FLAGS.epsilon, 
-                                max_tensor, 
-                                min_tensor, 
-                                alpha=FLAGS.epsilon/10, 
-                                num_iter=FLAGS.PGD_iterations)
+                                 X, 
+                                 y, 
+                                 FLAGS.epsilon, 
+                                 max_tensor, 
+                                 min_tensor, 
+                                 alpha=FLAGS.epsilon/10, 
+                                 num_iter=FLAGS.PGD_iterations)
 
             # save computed deltas
             if not net.training:
@@ -145,17 +155,6 @@ def get_FAB_acc(run_name, attack, verbose=True):
         
         # initialize attack
         if attack == 'FAB':
-            '''adversary = FABAttack(net, 
-                              norm='Linf',
-                              n_restarts=10,
-                              n_iter=150,
-                              eps=FLAGS.epsilon,
-                              alpha_max=0.1,
-                              eta=1.05,
-                              beta=0.9, 
-                              verbose=True,
-                              min_tensor=min_tensor, 
-                              max_tensor=max_tensor)'''
             version = 'custom'
             adversary = AutoAttack(net, 
                                    norm='Linf', 
@@ -178,9 +177,9 @@ def get_FAB_acc(run_name, attack, verbose=True):
                                    max_tensor=max_tensor)
 
             if version == 'custom':
-                if attack == 'APGD-DLR':
+                if attack == 'APGD_DLR':
                     adversary.attacks_to_run = ['apgd-dlr']
-                elif attack == 'APGD-CE':
+                elif attack == 'APGD_CE':
                     adversary.attacks_to_run = ['apgd-ce']
         
         elif attack == 'Square':
@@ -249,6 +248,14 @@ def get_FAB_acc(run_name, attack, verbose=True):
         if attack != 'PGD':
             advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
         with torch.no_grad():
+            if FLAGS.test_noisy and not FLAGS.noise_before_PGD:
+                print('Adversarial Test With Noise ...')
+                net = noisy_VGG(net, 
+                                eval_mode=FLAGS.use_pop_stats,
+                                noise_variance=FLAGS.noise_variance, 
+                                device=device,
+                                capacity_=FLAGS.capacity,
+                                noise_capacity_constraint=FLAGS.noise_capacity_constraint)
             outputs = net(advimg)
             outputs_clean = net(X_positive)
         

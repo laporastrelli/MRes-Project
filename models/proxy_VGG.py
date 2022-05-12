@@ -1,91 +1,73 @@
 from os import stat
+from tabnanny import verbose
+from cv2 import mean
 import torch
 import torch.nn as nn
 
+from utils_ import utils_flags
+from absl import flags
 from collections import namedtuple
 
-# VGG contains the following class variable:
-# features --> avgpool --> flatten --> classifier
-
-# ---OBSERVATION---: Models are more robust if (without using net.eval)
-#                    BatchNorm makes use of test mini-batch statatsics
-#                    at evaluation time. 
-
-# ---AIM---: Inject noise to BN layers in "features":
-#            for each BN layer that we find save running_mean
-#            and running_var and unject Gaussian Noise with
-#            mean equal zero and variance equal to alpha*running_var 
-#            where alpha is tuned to keep performance invariant (or almost).
-
-# ---GOAL---: Observe whether by injecting noise (and using net.eval())
-#             the model is more robust to adversarial attacks. 
+FLAGS = flags.FLAGS
 
 class proxy_VGG(nn.Module):
 
-    def __init__(self, net):
+    def __init__(self, 
+                 net, 
+                 eval_mode,
+                 device, 
+                 noise_variance=0, 
+                 verbose=False, 
+                 run_name=''):
+
         super(proxy_VGG, self).__init__()
 
-        features = list(net.features)[:-1]
+        self.noise_variance = noise_variance
+        self.device = device
+        self.temp_net = net
+        self.capacity = {}
+        self.verbose = verbose
+        self.run_name = run_name
+
+        features = list(net.features)
         
         # ---- WATCH OUT w/ .eval() ---- #
         ###########################################
-        self.features = nn.ModuleList(features).eval()
+        if eval_mode:
+            net.eval()
+            self.features = nn.ModuleList(features).eval()
+            self.avgpool = net.avgpool.eval()
+            self.classifier = net.classifier.eval()
+        else:
+            self.features = nn.ModuleList(features)
+            self.avgpool = net.avgpool
+            self.classifier = net.classifier
         ###########################################
 
-        stats = []
-        for jj, layer in enumerate(self.features):
-            if isinstance(layer, torch.nn.modules.batchnorm.BatchNorm2d):
-                assert isinstance(self.features[jj-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
-                temp_running_mean = layer.running_mean
-                temp_running_var = layer.running_var
-                stats.append([temp_running_mean, temp_running_var])
-
     def forward(self, x):
-        results = []
-        cnt_bn = 0 
+        bn_count = 0
         for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
-                cnt_bn += 1
-                temp = x
-                temp_mean = temp.mean([0, 2, 3])
-                temp_var = temp.var([0, 2, 3], unbiased=False)
 
-                if cnt_bn == 1:
-                    temp_running_mean = model.running_mean
-                    temp_running_var = model.running_var
+                var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
+                var_train = model.running_var
+                lambda_ = model.weight
 
+                if self.verbose:
+                    self.capacity['BN_' + str(bn_count)] = (var_test * lambda_**2)/var_train
+
+                bn_count += 1
             x = model(x)
-            if isinstance(model, torch.nn.modules.conv.Conv2d):
-                if isinstance(self.features[ii+1], torch.nn.modules.batchnorm.BatchNorm2d):
-                    continue
-                else: 
-                    results.append(x.mean([2,3]).cpu().numpy())
+        
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        out = self.classifier(x)
 
-            elif isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                gamma = model.weight
-                beta = model.bias
-                eps = model.eps
-                running_mean = model.running_mean.detach().clone()
-                running_var = model.running_var.detach().clone()
+        return out
 
-                out = (temp - running_mean[None, :, None, None]) / (torch.sqrt(running_var[None, :, None, None] + eps))
-                custom_batch_norm = (out*gamma[None, :, None, None]) + beta[None, :, None, None]
+    def get_capacity(self):
+        return self.capacity
 
-                print('RUNNING STATISTICS: ', (custom_batch_norm - x).abs().max())
-
-                out_ = (temp - temp_mean[None, :, None, None]) / (torch.sqrt(temp_var[None, :, None, None] + eps))
-                custom_batch_norm_ = (out_*gamma[None, :, None, None]) + beta[None, :, None, None]
-                
-                print('mini-BATCH STATISTICS:', (custom_batch_norm_ - x).abs().max())
-
-                out__ = (temp - temp_running_mean[None, :, None, None]) / (torch.sqrt(temp_running_var[None, :, None, None] + eps))
-                custom_batch_norm__ = (out__*gamma[None, :, None, None]) + beta[None, :, None, None]
-
-                # print('PREVIOUS RUNNING STATISTICS: ', (custom_batch_norm__ - x).abs().max())
-
-                results.append(x.mean([2,3]).cpu().numpy())
-
-        return results
-
-
+    def set_verbose(self, verbose):
+        self.verbose = verbose
