@@ -1,3 +1,4 @@
+from curses import flash
 import numpy as np
 from absl import flags
 from datetime import datetime
@@ -14,6 +15,7 @@ flags.DEFINE_string('dataset', None, 'dataset to use')
 flags.DEFINE_string('root_path', '/vol/bitbucket/lr4617', 'path to root directory')
 flags.DEFINE_string('dataset_path', '/vol/bitbucket/lr4617/data/', 'path to dataset')
 flags.DEFINE_string('csv_path', None, 'path to csv results file')
+flags.DEFINE_bool('verbose', True, 'Prompt informative text about running session')
 
 flags.DEFINE_bool('train', None, 'decide whether to train or not')
 flags.DEFINE_bool('train_noisy', None, 'decide whether to train with noise or not')
@@ -22,7 +24,8 @@ flags.DEFINE_bool('load_pretrained', None, 'decide whether to load pre trained m
 flags.DEFINE_bool('test', None, 'decide whether to test or not')
 flags.DEFINE_bool('test_noisy', False, 'inject noise at test time')
 flags.DEFINE_float('noise_variance', 0, 'value of injected noise variance')
-flags.DEFINE_bool('noise_after_BN', False, 'decide if to apply noise before or after BN layer')
+flags.DEFINE_bool('noise_before_PGD', False, 'decide whether to use noise ')
+flags.DEFINE_bool('noise_after_BN', None, 'decide if to apply noise before or after BN layer')
 flags.DEFINE_bool('random_resizing', False, 'decide whether to apply random input resizing + cropping')
 flags.DEFINE_bool('get_features', False, 'extract layer features mode')
 flags.DEFINE_bool('adversarial_test', None, 'decide whether to test or not')
@@ -32,8 +35,8 @@ flags.DEFINE_bool('no_eval_clean', False, 'for adversarial testing with clean ba
 flags.DEFINE_bool('get_logits', False, 'print decision logits')
 flags.DEFINE_bool('save_to_log', False, 'save results to log')
 flags.DEFINE_bool('noise_capacity_constraint', False, 'noise selection based on KL capacity constraint')
+flags.DEFINE_bool('capacity_calculation', False, 'decide whether to calculate capacity or not')
 flags.DEFINE_list('capacity', None, 'list of attacks to use')
-
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

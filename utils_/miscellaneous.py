@@ -3,7 +3,6 @@ import torch
 import os 
 
 def get_minmax(test_loader, device):
-
     max_ = [-100, -100, -100]
     min_ = [100, 100, 100]
     for _, temp_ in enumerate(test_loader, 0):
@@ -43,7 +42,6 @@ def get_path2delta(PATH_to_deltas_,
     return path
 
 def get_model_path(root_path, model_name, run_name):
-
     PATH_to_model = root_path + '/models/' + model_name + '/' + run_name + '.pth'
     return PATH_to_model
 

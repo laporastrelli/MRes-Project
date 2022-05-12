@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity
 from utils_ import get_model
-from utils_.miscellaneous import get_minmax, get_path2delta
+from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name
 
 #### check ####
 from advertorch.attacks import LinfPGDAttack
@@ -84,14 +84,13 @@ def test(net,
             X = pad(X_crop)
         if inject_noise:
             noisy_net = noisy_VGG(net, 
-                                    eval_mode=eval_mode,
-                                    noise_variance=noise_variance, 
-                                    device=device,
-                                    capacity=capacity,
-                                    noise_capacity_constraint=noise_capacity_constraint)
+                                  eval_mode=eval_mode,
+                                  noise_variance=noise_variance, 
+                                  device=device,
+                                  capacity_=capacity,
+                                  noise_capacity_constraint=noise_capacity_constraint)
             outputs = noisy_net(X)
         if get_logits:
-
             if i == 10:
                 acc = 0
                 break
@@ -215,6 +214,7 @@ def adversarial_test(net,
                      epsilon, 
                      num_iter,
                      noise_capacity_constraint,
+                     capacity_calculation=False,
                      capacity=0,
                      use_pop_stats=False,
                      inject_noise=False,
@@ -238,12 +238,18 @@ def adversarial_test(net,
                         capacity_=capacity,
                         noise_capacity_constraint=noise_capacity_constraint)
 
+    elif capacity_calculation:
+        print('Calculating Capacity')
+        net = proxy_VGG(net, 
+                        eval_mode=use_pop_stats,
+                        device=device,)
+    
     if use_pop_stats:
         net.eval()
 
     ################## IMPORTANT ##################
 
-    # setting dropout to eval mode
+    # setting dropout to eval mode (in VGG)
     if run_name.find('VGG')!= -1:
         net.classifier.eval()
 
@@ -317,30 +323,46 @@ def adversarial_test(net,
                     
             elif attack == 'PGD':
                 if custom:
-                    if i==0 and inject_noise and noise_capacity_constraint:
+                    if i==0 and capacity_calculation:
                         net.set_verbose(verbose=True)
-                        delta, capacity = pgd_linf_capacity(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
-                        to_plot = []
-                        last_ = 0
-                        print('-------------------------------------------')
-                        for temp, step_capacity in enumerate(capacity):
-                            if temp>0:
-                                print(torch.equal(step_capacity['BN_0'], last_))
-                            last_ = step_capacity['BN_0']
-                            to_plot.append(step_capacity['BN_0'].mean([0, 2, 3]).cpu().detach().numpy())
-
-                        print(len(to_plot))
-
-                        x_axis = np.arange(len(capacity))
-                        for x_, y_ in zip(x_axis, to_plot):
-                            plt.scatter([x_] * len(y_), y_)
-
-                        plt.xticks([1, len(x_axis)])
-                        plt.savefig('./test_capacity.png')
-
+                        delta, capacities = pgd_linf_capacity(net, 
+                                                              run_name,
+                                                              X, 
+                                                              y, 
+                                                              epsilon, 
+                                                              max_tensor, 
+                                                              min_tensor, 
+                                                              alpha=epsilon/10, 
+                                                              num_iter=num_iter)
                         net.set_verbose(verbose=False)
-                    else:                            
-                        delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
+                        model_name = run_name.split('_')[0]
+                        if use_pop_stats:
+                            eval_mode_str = 'eval'
+                        else:
+                            eval_mode_str = 'no_eval'
+
+                        path_out = './results/' + model_name + '/' + eval_mode_str + '/' + attack + '/capacity/'
+                        folder_name = 'BN_' + str(get_bn_int_from_name(run_name)-1)
+                        if not os.path.isdir(path_out + folder_name):
+                            os.mkdir(path_out + folder_name)
+                        sub_folder_name = str(epsilon).replace('.', '')
+                        if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
+                            os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+                        t = 0
+                        fig = plt.figure()
+                        for temp in capacities:
+                            x_axis = [t]
+                            for x_, y_ in zip(x_axis, [temp]):
+                                plt.scatter([x_] * len(y_), y_)
+                                fig.savefig(path_out + folder_name + '/' \
+                                     + sub_folder_name + '/' + run_name + '_capacity.png')
+                            t+=1
+                        plt.xticks(np.arange(0, t))
+                    else:     
+                        if capacity_calculation:
+                            delta = [torch.zeros_like(X)]
+                        else:                       
+                            delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
                     adv_inputs = X + delta[0]
                 else:
                     adversary = LinfPGDAttack(
