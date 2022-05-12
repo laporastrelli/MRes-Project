@@ -121,7 +121,7 @@ def main(argv):
                     dict_name = attack + '-' + str(FLAGS.epsilon)
                     adv_accs[dict_name] = test(index, adversarial=True)
                     
-            if attack in ['FAB', 'APGD-CE', 'APGD-DLR', 'Square', '-PGD']:
+            if attack in ['FAB', 'APGD-CE', 'APGD_DLR', 'Square', '-PGD']:
                 for eps in FLAGS.epsilon_in:
                     FLAGS.epsilon = float(eps)
                     dict_name = attack + '-' + str(FLAGS.epsilon)
