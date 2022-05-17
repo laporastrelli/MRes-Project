@@ -62,7 +62,8 @@ def get_FAB_acc(run_name, attack, verbose=True):
                         noise_variance=FLAGS.noise_variance, 
                         device=device,
                         capacity_=FLAGS.capacity,
-                        noise_capacity_constraint=FLAGS.noise_capacity_constraint)
+                        noise_capacity_constraint=FLAGS.noise_capacity_constraint,
+                        run_name=run_name)
 
     if verbose:
         if not net.training:
@@ -255,7 +256,8 @@ def get_FAB_acc(run_name, attack, verbose=True):
                                 noise_variance=FLAGS.noise_variance, 
                                 device=device,
                                 capacity_=FLAGS.capacity,
-                                noise_capacity_constraint=FLAGS.noise_capacity_constraint)
+                                noise_capacity_constraint=FLAGS.noise_capacity_constraint,
+                                run_name=run_name)
             outputs = net(advimg)
             outputs_clean = net(X_positive)
         

@@ -22,12 +22,3 @@ for layers_entropy in files:
     plt.show()
     name_out = layers_entropy.replace('.npy', '.jpg')
     plt.savefig('./entropy_analysis/' + name_out)
-
-'''
-def main(argv):
-    
-    del argv
-
-if __name__ == '__main__':
-    app.run(main)
-'''

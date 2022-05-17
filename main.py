@@ -165,6 +165,8 @@ def main(argv):
                     where_noise = 'before'
                 if not FLAGS.noise_before_PGD:
                     where_noise += '_after_attack'
+                if FLAGS.scaled_noise:
+                    where_noise += '_scaled'
                 FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                                  + 'results_' + eval_mode_str + '_' + noise_var_str \
                                  + '_' + where_noise + '.csv'

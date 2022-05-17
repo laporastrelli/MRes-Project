@@ -37,6 +37,8 @@ flags.DEFINE_bool('save_to_log', False, 'save results to log')
 flags.DEFINE_bool('noise_capacity_constraint', False, 'noise selection based on KL capacity constraint')
 flags.DEFINE_bool('capacity_calculation', False, 'decide whether to calculate capacity or not')
 flags.DEFINE_list('capacity', None, 'list of attacks to use')
+flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
+
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

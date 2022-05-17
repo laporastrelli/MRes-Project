@@ -1,3 +1,4 @@
+import string
 from tkinter.tix import Tree
 from turtle import clear
 import torch 
@@ -155,22 +156,36 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
     return deltas
 
-def pgd_linf_capacity(model, run_name, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key):
     """ Construct PGD adversarial examples on the examples X"""
     deltas = []
-    capacities = []
+    capacities = dict.fromkeys(layer_key, [])
+    print(capacities)
     delta = torch.zeros_like(X, requires_grad=True)
     for t in range(num_iter): 
+        model.get_PGD_steps(steps=t)
         loss = nn.CrossEntropyLoss()(model(X + delta), y)
         loss.backward()
         delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
         delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
         delta.grad.zero_()
 
-        # getting capacity
-        temp = model.get_capacity()['BN_0']
-        capacities.append(temp.cpu().detach().numpy())
-
+        for k, key in enumerate(layer_key):
+            if t == 0:
+                capacities[key] = model.get_capacity()[key].cpu().detach().numpy().tolist()
+            else:
+                to_add = []
+                if t == 1: 
+                    exists = [capacities[key]]
+                else:
+                    exists = capacities[key]
+                for i in range(len(exists) + 1):
+                    if i < len(exists):
+                        to_add.append(exists[i])
+                    else:
+                        to_add.append(model.get_capacity()[key].cpu().detach().numpy().tolist())
+                capacities[key] = to_add
+  
     deltas.append(delta.detach())
 
     return deltas, capacities

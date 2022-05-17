@@ -88,9 +88,10 @@ def test(net,
                                   noise_variance=noise_variance, 
                                   device=device,
                                   capacity_=capacity,
-                                  noise_capacity_constraint=noise_capacity_constraint)
+                                  noise_capacity_constraint=noise_capacity_constraint, 
+                                  run_name=run_name)
             outputs = noisy_net(X)
-        if get_logits:
+        elif get_logits:
             if i == 10:
                 acc = 0
                 break
@@ -152,7 +153,8 @@ def test(net,
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_correct_' + str(i) + '.npy', np.asarray(logits_diff_correct))
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_incorrect_' + str(i) + '.npy', np.asarray(logits_diff_incorrect))
 
-        else:
+        if not inject_noise:
+            print('STANDARD TEST')
             outputs = net(X)
         _, predicted = torch.max(outputs.data, 1)
 
@@ -221,6 +223,7 @@ def adversarial_test(net,
                      noise_variance=0,
                      no_eval_clean=False,
                      random_resizing=False,
+                     scaled_noise=False,
                      eval=True, 
                      custom=True,
                      save=False):
@@ -236,18 +239,21 @@ def adversarial_test(net,
                         noise_variance=noise_variance, 
                         device=device,
                         capacity_=capacity,
-                        noise_capacity_constraint=noise_capacity_constraint)
+                        noise_capacity_constraint=noise_capacity_constraint,
+                        run_name=run_name, 
+                        scaled_noise=scaled_noise)
 
     elif capacity_calculation:
         print('Calculating Capacity')
         net = proxy_VGG(net, 
                         eval_mode=use_pop_stats,
-                        device=device,)
+                        device=device,
+                        run_name=run_name,
+                        noise_variance=noise_variance)
     
+    ################## IMPORTANT ##################
     if use_pop_stats:
         net.eval()
-
-    ################## IMPORTANT ##################
 
     # setting dropout to eval mode (in VGG)
     if run_name.find('VGG')!= -1:
@@ -283,7 +289,6 @@ def adversarial_test(net,
             X, y = data
             X, y = X.to(device), y.to(device)
             
-            # different modes
             if random_resizing:
                 size = random.randint(X.shape[2]-2, X.shape[2]-1)
                 size = X.shape[2]-2
@@ -323,41 +328,78 @@ def adversarial_test(net,
                     
             elif attack == 'PGD':
                 if custom:
-                    if i==0 and capacity_calculation:
+                    if i==1 and capacity_calculation and get_bn_int_from_name(run_name)!=0:
                         net.set_verbose(verbose=True)
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = 'BN_1'
                         delta, capacities = pgd_linf_capacity(net, 
-                                                              run_name,
                                                               X, 
                                                               y, 
                                                               epsilon, 
                                                               max_tensor, 
                                                               min_tensor, 
                                                               alpha=epsilon/10, 
-                                                              num_iter=num_iter)
-                        net.set_verbose(verbose=False)
+                                                              num_iter=num_iter, 
+                                                              layer_key=layer_key)
+                        net.set_verbose(verbose=False) 
                         model_name = run_name.split('_')[0]
+
                         if use_pop_stats:
                             eval_mode_str = 'eval'
                         else:
                             eval_mode_str = 'no_eval'
+                        
+                        path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
+                                 + attack + '/capacity/'
 
-                        path_out = './results/' + model_name + '/' + eval_mode_str + '/' + attack + '/capacity/'
-                        folder_name = 'BN_' + str(get_bn_int_from_name(run_name)-1)
-                        if not os.path.isdir(path_out + folder_name):
-                            os.mkdir(path_out + folder_name)
-                        sub_folder_name = str(epsilon).replace('.', '')
-                        if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
-                            os.mkdir(path_out + folder_name + '/' + sub_folder_name)
-                        t = 0
-                        fig = plt.figure()
-                        for temp in capacities:
-                            x_axis = [t]
-                            for x_, y_ in zip(x_axis, [temp]):
-                                plt.scatter([x_] * len(y_), y_)
-                                fig.savefig(path_out + folder_name + '/' \
-                                     + sub_folder_name + '/' + run_name + '_capacity.png')
-                            t+=1
-                        plt.xticks(np.arange(0, t))
+                        if len(layer_key)==1:
+                            if layer_key[0] == 'BN_0':
+                                path_out += 'first_layer/'
+                            else:
+                                path_out += 'second_layer/'
+                        else:
+                            path_out += 'all_layers/'
+                        
+                        print('MODE: ', net.get_noisy_mode())
+
+                        if net.get_noisy_mode():
+                            path_out += 'noisy_test/'
+                        else:
+                            path_out += 'clean_test/'
+                        
+                        if not os.path.isdir(path_out):
+                            os.mkdir(path_out)
+
+                        if not os.path.isdir(path_out + 'BATCH_' + str(i)):
+                            os.mkdir(path_out + 'BATCH_' + str(i))
+                        path_out += 'BATCH_' + str(i) + '/'
+
+                        if len(layer_key)==1:
+                            folder_names = ['BN_' + str(get_bn_int_from_name(run_name)-1)]
+                        else:
+                            folder_names = layer_key
+
+                        for folder_name in folder_names:
+                            if not os.path.isdir(path_out + folder_name):
+                                os.mkdir(path_out + folder_name)
+                            sub_folder_name = str(epsilon).replace('.', '')
+                            if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
+                                os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+                            t = 0
+                            fig = plt.figure()
+                            for temp in capacities[folder_name]:
+                                x_axis = [t]
+                                for x_, y_ in zip(x_axis, [temp]):
+                                    plt.scatter([x_] * len(y_), y_)
+                                    plt.xlabel('PGD steps')
+                                    plt.ylabel('Capacity Estimate')
+                                    fig.savefig(path_out + folder_name + '/' \
+                                        + sub_folder_name + '/' + run_name + '_capacity.png')
+                                t+=1
+                            plt.xticks(np.arange(0, t))
+
                     else:     
                         if capacity_calculation:
                             delta = [torch.zeros_like(X)]
@@ -372,7 +414,6 @@ def adversarial_test(net,
                     adv_inputs = adversary.perturb(X, y)
                     delta = [adv_inputs-X]
             
-            # save deltas and test model on adversaries
             if len(delta) == 1:
                 if save:     
                     path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack)
@@ -396,7 +437,6 @@ def adversarial_test(net,
                 total += y.size(0)
                 correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
 
-            # if multiples epsilons are used save each of them and test model on adversaries
             else:
                 for k, idv_delta in enumerate(delta):
                     num = epsilon[k]
