@@ -51,7 +51,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
     model_name = get_model_name(run_name)
     net = get_model(model_name, where_bn)
     PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
-    net.load_state_dict(torch.load(PATH_to_model))
+    net.load_state_dict(torch.load(PATH_to_model, map_location='cuda:0'))
     net.to(device)
     set_eval_mode(net, FLAGS.use_pop_stats)
 

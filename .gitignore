@@ -155,6 +155,7 @@ autoattack/
 scripts/
 entropy_analysis/
 runnables/
+gpucluster/
 
 
 # Files

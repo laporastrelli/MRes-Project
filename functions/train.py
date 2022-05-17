@@ -11,7 +11,6 @@ import os
 import time 
 import torchvision.models as models
 import pandas as pd
-
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter

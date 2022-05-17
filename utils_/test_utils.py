@@ -42,7 +42,7 @@ def test(net,
         capacity=0,
         get_logits=False):
 
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
     if eval_mode:
         net.eval()
@@ -228,7 +228,7 @@ def adversarial_test(net,
                      custom=True,
                      save=False):
 
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## IMPORTANT ##################

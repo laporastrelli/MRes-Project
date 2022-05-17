@@ -1,8 +1,11 @@
+print('123456789012345678912345678901234567890123456789012345678901234567890')
+
 ############ IMPORTS ############
 from webbrowser import get
 import os
 import numpy as np
 import csv
+import torch
 from torch.utils.tensorboard import SummaryWriter
 from utils_ import utils_flags
 from absl import app
@@ -18,14 +21,22 @@ columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization',
                'Training Mode', 'Test Accuracy', 'Epsilon Budget',
                'PGD - 0.1', 'PGD - 0.0313', 'PGD - 0.5', 'PGD - 0.1565']
 
+print(columns_csv)
+
 def main(argv):
     
     del argv
-
+    
+    print('TEST_________________________________________________')
     ######################################################### SETUP #########################################################
 
     # parse inputs 
     FLAGS = flags.FLAGS
+    
+    if FLAGS.device is None:
+        # get device 
+        # FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
+        FLAGS.device = 'cuda:0' 
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
@@ -79,13 +90,16 @@ def main(argv):
         if FLAGS.adversarial_test:
             for attack in FLAGS.attacks_in:
                 FLAGS.attack = attack
+        if FLAGS.adversarial_test:
+            for attack in FLAGS.attacks_in:
+                FLAGS.attack = attack
                 for eps in FLAGS.epsilon_in:
                     FLAGS.epsilon = float(eps)
                     _ = test(index, get_features=True, adversarial=True)
         else:
             _ = test(index, get_features=True)
         
-        # setting adversarial_test back to False:
+        # setting adversarial_test back to False
         FLAGS.adversarial_test = False
 
     if FLAGS.adversarial_test:
@@ -142,7 +156,7 @@ def main(argv):
             else:
                 eval_mode_str = 'no_eval'
 
-            csv_path_dir = './results/' + model_name + '/' + eval_mode_str + '/'  \
+            csv_path_dir = './gpucluster/SVHN/' + model_name + '/' + eval_mode_str + '/'  \
                             + FLAGS.attacks_in[0] + '/' 
 
             if FLAGS.test_noisy:
