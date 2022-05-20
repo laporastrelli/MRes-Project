@@ -224,6 +224,7 @@ def adversarial_test(net,
                      no_eval_clean=False,
                      random_resizing=False,
                      scaled_noise=False,
+                     scaled_noise_norm=False,
                      eval=True, 
                      custom=True,
                      save=False):
@@ -241,7 +242,8 @@ def adversarial_test(net,
                         capacity_=capacity,
                         noise_capacity_constraint=noise_capacity_constraint,
                         run_name=run_name, 
-                        scaled_noise=scaled_noise)
+                        scaled_noise=scaled_noise, 
+                        scaled_noise_norm=scaled_noise_norm)
 
     elif capacity_calculation:
         print('Calculating Capacity')
@@ -333,18 +335,26 @@ def adversarial_test(net,
                         if run_name.find('bn')!= -1:
                             layer_key = ['BN_' + str(i) for i in range(16)]
                         else:
-                            layer_key = 'BN_1'
-                        delta, capacities = pgd_linf_capacity(net, 
-                                                              X, 
-                                                              y, 
-                                                              epsilon, 
-                                                              max_tensor, 
-                                                              min_tensor, 
-                                                              alpha=epsilon/10, 
-                                                              num_iter=num_iter, 
-                                                              layer_key=layer_key)
+                            layer_key = 'BN_0'
+                        delta, capacities, adv_activations = pgd_linf_capacity(net, 
+                                                                                X, 
+                                                                                y, 
+                                                                                epsilon, 
+                                                                                max_tensor, 
+                                                                                min_tensor, 
+                                                                                alpha=epsilon/10, 
+                                                                                num_iter=num_iter, 
+                                                                                layer_key=layer_key)
+                        # NOW: computing CKA just for ### VGG19_0 ### configurations
+                        '''if get_activations and get_bn_int_from_name(run_name)==1:
+                            _ = net(X)
+                            clean_activations = net.get_activations()
+                            CKAs = dict.fromkeys(np.arange(num_iter, dtype=np.str), [])
+                            for step in range(num_iter):
+                                CKAs[str(step)] = CKA(clean_activations, adv_activations)'''
+
                         net.set_verbose(verbose=False) 
-                        model_name = run_name.split('_')[0]
+                        model_name = run_name.split('_')[0]                        
 
                         if use_pop_stats:
                             eval_mode_str = 'eval'

@@ -1,6 +1,7 @@
 from cProfile import run
 import torch 
 import os 
+import math as mt
 
 def get_minmax(test_loader, device):
     max_ = [-100, -100, -100]
@@ -150,3 +151,21 @@ def set_load_pretrained(train, test_run):
         load_pretrained = True
 
     return load_pretrained
+
+def CKA(X_clean, X_adv):
+    X_clean = torch.reshape(X_clean, (X_clean.size(1), X_clean.size(0), -1))
+    X_adv = torch.reshape(X_adv, (X_adv.size(1), X_adv.size(0), -1))
+    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1)))
+    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1)))
+    CKA = HSIC(K,L,X_clean.size(0))/mt.sqrt(HSIC(K,K,X_clean.size(0))*HSIC(L,L,X_clean.size(0)))
+    return CKA
+
+def HSIC(gram1, gram2, m):
+    return torch.matmul(torch.flatten(center(gram1)), torch.flatten(center(gram2)))/((m-1)^2)
+
+def center(matrix):
+    centering = torch.eye(matrix.size(1)) - (1/matrix.size(1))*torch.ones(matrix.size(1), matrix.size(1))
+    centering = centering.unsqueeze(0).repeat(matrix.size(0), 1, 1, 1)
+    centered_matrix = torch.matmul(centering, matrix)
+    centered_matrix = torch.matmul(centered_matrix, centering)
+    return centered_matrix
