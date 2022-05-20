@@ -156,11 +156,11 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
     return deltas
 
-def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key):
+def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key, get_activations):
     """ Construct PGD adversarial examples on the examples X"""
     deltas = []
     capacities = dict.fromkeys(layer_key, [])
-    print(capacities)
+    activations = dict.fromkeys(layer_key, [])
     delta = torch.zeros_like(X, requires_grad=True)
     for t in range(num_iter): 
         model.get_PGD_steps(steps=t)
@@ -173,22 +173,30 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
         for k, key in enumerate(layer_key):
             if t == 0:
                 capacities[key] = model.get_capacity()[key].cpu().detach().numpy().tolist()
+                if get_activations:
+                    activations[key] = model.get_activations()[key]
             else:
                 to_add = []
+                to_add_act = []
                 if t == 1: 
                     exists = [capacities[key]]
+                    exists_act = [activations[key]]
                 else:
                     exists = capacities[key]
+                    exists_act = activations[key]
                 for i in range(len(exists) + 1):
                     if i < len(exists):
                         to_add.append(exists[i])
+                        to_add_act.append(exists_act[i])
                     else:
                         to_add.append(model.get_capacity()[key].cpu().detach().numpy().tolist())
+                        to_add_act.append( model.get_activations()[key])
                 capacities[key] = to_add
+                activations[key] = to_add_act
   
     deltas.append(delta.detach())
 
-    return deltas, capacities
+    return deltas, capacities, activations
 
 def pgd_linf_rand(model, X, y, epsilon, alpha, num_iter, restarts):
     """ Construct PGD adversarial examples on the samples X, with random restarts"""

@@ -39,7 +39,8 @@ class noisy_VGG(nn.Module):
                  run_name='',
                  mode='', 
                  verbose=False, 
-                 scaled_noise=False):
+                 scaled_noise=False, 
+                 scaled_noise_norm=False):
 
         super(noisy_VGG, self).__init__()
 
@@ -51,8 +52,10 @@ class noisy_VGG(nn.Module):
         self.mode = mode
         self.temp_net = net
         self.capacity = {}
+        self.activations = {}
         self.verbose = verbose
-        self.scaled_noise =  scaled_noise
+        self.scaled_noise = scaled_noise
+        self.scaled_noise_norm = scaled_noise_norm
         self.init_capacity = 0
 
         features = list(net.features)
@@ -110,12 +113,15 @@ class noisy_VGG(nn.Module):
                             if self.verbose:
                                 self.capacity['BN_' + str(bn_count)] = (torch.square(x - model.running_mean[None, :, None, None]))\
                                                                         /(2*torch.sqrt(noise[None, :, None, None] + model.running_var[None, :, None, None])).detach()
+                                self.activations['BN_' + str(bn_count)] = x
                     else:
-                        if self.scaled_noise:
+                        if self.scaled_noise or self.scaled_noise_norm:
                             capacity = (x.var([0,2,3])*model.weight)/(model.running_var) 
                             if self.get_PGD_steps == 0:
                                 self.init_capacity = capacity 
                             capacity_diff = capacity - self.init_capacity
+                            if self.scaled_noise_norm:
+                                capacity_diff = torch.nn.functional.relu(capacity_diff)
                             noise_variance_d = ((capacity_diff - torch.min(capacity_diff))/(torch.max(capacity_diff) \
                                                - torch.min(capacity_diff))) * self.noise_variance*torch.ones_like(capacity_diff)
                             noise = torch.zeros_like(x)
@@ -144,10 +150,13 @@ class noisy_VGG(nn.Module):
 
     def get_capacity(self):
         return self.capacity
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
+    
+    def get_activations(self):
+        return self.activations
 
     def get_PGD_steps(self, steps):
         self.pgd_steps = steps
         return self.pgd_steps
+    
+    def set_verbose(self, verbose):
+        self.verbose = verbose

@@ -27,6 +27,7 @@ class proxy_VGG(nn.Module):
         self.device = device
         self.temp_net = net
         self.capacity = {}
+        self.activations = {}
         self.verbose = verbose
         self.run_name = run_name
 
@@ -54,6 +55,7 @@ class proxy_VGG(nn.Module):
                 var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                 if self.verbose:
                     self.capacity['BN_' + str(bn_count)] = (var_test * model.weight**2)/model.running_var
+                    self.activations['BN_' + str(bn_count)] = x
 
                 bn_count += 1
             x = model(x)
@@ -69,13 +71,17 @@ class proxy_VGG(nn.Module):
 
     def get_capacity(self):
         return self.capacity
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
     
+    def get_activations(self):
+        return self.activations
+
     def get_noisy_mode(self):
         if self.noise_variance == float(0):
             noisy_mode = False
         else:
             noisy_mode = True
         return noisy_mode
+
+    def set_verbose(self, verbose):
+        self.verbose = verbose
+    
