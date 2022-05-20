@@ -156,12 +156,13 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
     return deltas
 
-def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key, get_activations):
+def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key, get_CKA):
     """ Construct PGD adversarial examples on the examples X"""
     deltas = []
     capacities = dict.fromkeys(layer_key, [])
     activations = dict.fromkeys(layer_key, [])
     delta = torch.zeros_like(X, requires_grad=True)
+
     for t in range(num_iter): 
         model.get_PGD_steps(steps=t)
         loss = nn.CrossEntropyLoss()(model(X + delta), y)
@@ -173,8 +174,7 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
         for k, key in enumerate(layer_key):
             if t == 0:
                 capacities[key] = model.get_capacity()[key].cpu().detach().numpy().tolist()
-                if get_activations:
-                    activations[key] = model.get_activations()[key]
+                activations[key] = model.get_activations()[key]
             else:
                 to_add = []
                 to_add_act = []
@@ -190,7 +190,7 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
                         to_add_act.append(exists_act[i])
                     else:
                         to_add.append(model.get_capacity()[key].cpu().detach().numpy().tolist())
-                        to_add_act.append( model.get_activations()[key])
+                        to_add_act.append(model.get_activations()[key])
                 capacities[key] = to_add
                 activations[key] = to_add_act
   

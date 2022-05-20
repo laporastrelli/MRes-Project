@@ -153,15 +153,15 @@ def set_load_pretrained(train, test_run):
     return load_pretrained
 
 def CKA(X_clean, X_adv):
-    X_clean = torch.reshape(X_clean, (X_clean.size(1), X_clean.size(0), -1))
-    X_adv = torch.reshape(X_adv, (X_adv.size(1), X_adv.size(0), -1))
-    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1)))
-    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1)))
-    CKA = HSIC(K,L,X_clean.size(0))/mt.sqrt(HSIC(K,K,X_clean.size(0))*HSIC(L,L,X_clean.size(0)))
+    X_clean = X_clean.view((X_clean.size(1), X_clean.size(0), -1)) # (ch, batchsize, width^2)
+    X_adv = X_adv.view((X_adv.size(1), X_adv.size(0), -1)) # (ch, batchsize, width^2)
+    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1))) # (ch, batchsize, batchsize)
+    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1))) # (ch, batchsize, batchsize)
+    CKA = HSIC(K,L,X_clean.size(0))/(mt.sqrt(HSIC(K,K,X_clean.size(0))*HSIC(L,L,X_clean.size(0)))) # (ch, 1)
     return CKA
 
 def HSIC(gram1, gram2, m):
-    return torch.matmul(torch.flatten(center(gram1)), torch.flatten(center(gram2)))/((m-1)^2)
+    return (center(gram1).view((gram1.size(0), -1))*center(gram2).view((gram2.size(0), -1))).sum(axis=1)/((m-1)^2)
 
 def center(matrix):
     centering = torch.eye(matrix.size(1)) - (1/matrix.size(1))*torch.ones(matrix.size(1), matrix.size(1))

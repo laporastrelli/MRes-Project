@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity
 from utils_ import get_model
-from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name
+from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name, CKA
 
 #### check ####
 from advertorch.attacks import LinfPGDAttack
@@ -225,6 +225,7 @@ def adversarial_test(net,
                      random_resizing=False,
                      scaled_noise=False,
                      scaled_noise_norm=False,
+                     get_CKA=False, 
                      eval=True, 
                      custom=True,
                      save=False):
@@ -337,21 +338,20 @@ def adversarial_test(net,
                         else:
                             layer_key = 'BN_0'
                         delta, capacities, adv_activations = pgd_linf_capacity(net, 
-                                                                                X, 
-                                                                                y, 
-                                                                                epsilon, 
-                                                                                max_tensor, 
-                                                                                min_tensor, 
-                                                                                alpha=epsilon/10, 
-                                                                                num_iter=num_iter, 
-                                                                                layer_key=layer_key)
+                                                                               X, 
+                                                                               y, 
+                                                                               epsilon, 
+                                                                               max_tensor, 
+                                                                               min_tensor, 
+                                                                               alpha=epsilon/10, 
+                                                                               num_iter=num_iter, 
+                                                                               layer_key=layer_key, 
+                                                                               get_CKA=get_CKA)
+                                                                               
                         # NOW: computing CKA just for ### VGG19_0 ### configurations
-                        '''if get_activations and get_bn_int_from_name(run_name)==1:
+                        if get_CKA and get_bn_int_from_name(run_name)==1:
                             _ = net(X)
                             clean_activations = net.get_activations()
-                            CKAs = dict.fromkeys(np.arange(num_iter, dtype=np.str), [])
-                            for step in range(num_iter):
-                                CKAs[str(step)] = CKA(clean_activations, adv_activations)'''
 
                         net.set_verbose(verbose=False) 
                         model_name = run_name.split('_')[0]                        
@@ -397,6 +397,7 @@ def adversarial_test(net,
                             sub_folder_name = str(epsilon).replace('.', '')
                             if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
                                 os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+
                             t = 0
                             fig = plt.figure()
                             for temp in capacities[folder_name]:
@@ -409,6 +410,18 @@ def adversarial_test(net,
                                         + sub_folder_name + '/' + run_name + '_capacity.png')
                                 t+=1
                             plt.xticks(np.arange(0, t))
+
+                            if get_CKA and get_bn_int_from_name(run_name)==1:
+                                fig = plt.figure()
+                                for step in range(num_iter):
+                                    temp = CKA(clean_activations, adv_activations[str(step)])
+                                    x_axis = [step]                                     
+                                    for x_, y_ in zip(x_axis, [temp]):
+                                        plt.scatter([x_] * len(y_), y_)
+                                        plt.xlabel('PGD steps')
+                                        plt.ylabel('Channel CKA')
+                                        fig.savefig(path_out + folder_name + '/' \
+                                            + sub_folder_name + '/' + run_name + '_capacity.png')
 
                     else:     
                         if capacity_calculation:
