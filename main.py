@@ -158,6 +158,11 @@ def main(argv):
 
             csv_path_dir = './gpucluster/SVHN/' + model_name + '/' + eval_mode_str + '/'  \
                             + FLAGS.attacks_in[0] + '/' 
+            
+            if FLAGS.relative_accuracy:
+                acc_mode = 'relative'
+            else:
+                acc_mode = ''
 
             if FLAGS.test_noisy:
                 if not os.path.isdir(csv_path_dir + 'noisy_test/'):
@@ -166,10 +171,10 @@ def main(argv):
                         
             if len(os.listdir(csv_path_dir)) == 0:
                 FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
-                                 + 'results_' + eval_mode_str + '.csv'
+                                 + 'results_' + eval_mode_str + + acc_mode + '.csv'
             elif len(os.listdir(csv_path_dir)) > 0:
                 FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
-                                 + 'results_' + eval_mode_str + '_adjusted' + '.csv'
+                                 + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
 
             if FLAGS.test_noisy:
                 noise_var_str = str(FLAGS.noise_variance).replace('.', '')
@@ -182,9 +187,9 @@ def main(argv):
                 if FLAGS.scaled_noise:
                     where_noise += '_scaled'
                 FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
-                                 + 'results_' + eval_mode_str + '_' + noise_var_str \
-                                 + '_' + where_noise + '.csv'
-
+                                 + 'results_' + eval_mode_str + '_' + acc_mode + '_' \
+                                 + noise_var_str + '_' + where_noise + '.csv' 
+                                 
             with open(FLAGS.csv_path, 'a') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=csv_dict.keys())
                 writer.writerow(csv_dict)

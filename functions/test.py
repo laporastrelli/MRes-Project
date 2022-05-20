@@ -104,7 +104,8 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    noise_variance=FLAGS.noise_variance, 
                                                    no_eval_clean=FLAGS.no_eval_clean,
                                                    random_resizing=FLAGS.random_resizing, 
-                                                   scaled_noise=FLAGS.scaled_noise)
+                                                   scaled_noise=FLAGS.scaled_noise, 
+                                                   relative_accuracy=FLAGS.relative_accuracy)
         
         outputs.append(adv_test_acc)
         

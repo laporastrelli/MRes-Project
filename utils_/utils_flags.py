@@ -22,6 +22,7 @@ flags.DEFINE_bool('train_noisy', None, 'decide whether to train with noise or no
 flags.DEFINE_float('train_noise_variance', None, 'noise variance used during training (in case noisy training is chosen)')
 flags.DEFINE_bool('load_pretrained', None, 'decide whether to load pre trained model')
 flags.DEFINE_bool('test', None, 'decide whether to test or not')
+flags.DEFINE_bool('relative_accuracy', False, 'evaluate with respect to correct batch correct samples')
 flags.DEFINE_bool('test_noisy', False, 'inject noise at test time')
 flags.DEFINE_float('noise_variance', 0, 'value of injected noise variance')
 flags.DEFINE_bool('noise_before_PGD', False, 'decide whether to use noise ')
@@ -38,7 +39,6 @@ flags.DEFINE_bool('noise_capacity_constraint', False, 'noise selection based on 
 flags.DEFINE_bool('capacity_calculation', False, 'decide whether to calculate capacity or not')
 flags.DEFINE_list('capacity', None, 'list of attacks to use')
 flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
-
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
