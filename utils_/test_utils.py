@@ -224,6 +224,7 @@ def adversarial_test(net,
                      no_eval_clean=False,
                      random_resizing=False,
                      scaled_noise=False,
+                     relative_accuracy=True,
                      scaled_noise_norm=False,
                      get_CKA=False, 
                      eval=True, 
@@ -510,7 +511,11 @@ def adversarial_test(net,
 
             total += y.size(0)
 
-    acc = correct_s / correct_clean
+    if relative_accuracy:
+        acc = correct_s / correct_clean
+    else:
+        acc = correct_s / total
+    
     print('Adversarial Test Accuracy: ', acc)
 
     if isinstance(epsilon, list):

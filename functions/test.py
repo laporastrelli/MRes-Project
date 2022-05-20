@@ -106,7 +106,8 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    random_resizing=FLAGS.random_resizing, 
                                                    scaled_noise=FLAGS.scaled_noise, 
                                                    scaled_noise_norm=FLAGS.scaled_noise_norm, 
-                                                   get_CKA=FLAGS.get_CKA)
+                                                   get_CKA=FLAGS.get_CKA,)
+                                                   relative_accuracy=FLAGS.relative_accuracy)
         
         outputs.append(adv_test_acc)
         

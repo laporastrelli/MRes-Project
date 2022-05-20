@@ -12,8 +12,8 @@ flags.DEFINE_string('model_name', None, 'model name among available models')
 flags.DEFINE_integer('version', None, 'model version to use (only for ResNet)')
 flags.DEFINE_integer('batch_size', 128, 'batch size for training')
 flags.DEFINE_string('dataset', None, 'dataset to use')
-flags.DEFINE_string('root_path', '/vol/bitbucket/lr4617', 'path to root directory')
-flags.DEFINE_string('dataset_path', '/vol/bitbucket/lr4617/data/', 'path to dataset')
+flags.DEFINE_string('root_path', '/data2/users/lr4617', 'path to root directory')
+flags.DEFINE_string('dataset_path', '/data2/users/lr4617/data/', 'path to dataset')
 flags.DEFINE_string('csv_path', None, 'path to csv results file')
 flags.DEFINE_bool('verbose', True, 'Prompt informative text about running session')
 
@@ -22,6 +22,7 @@ flags.DEFINE_bool('train_noisy', None, 'decide whether to train with noise or no
 flags.DEFINE_float('train_noise_variance', None, 'noise variance used during training (in case noisy training is chosen)')
 flags.DEFINE_bool('load_pretrained', None, 'decide whether to load pre trained model')
 flags.DEFINE_bool('test', None, 'decide whether to test or not')
+flags.DEFINE_bool('relative_accuracy', False, 'evaluate with respect to correct batch correct samples')
 flags.DEFINE_bool('test_noisy', False, 'inject noise at test time')
 flags.DEFINE_float('noise_variance', 0, 'value of injected noise variance')
 flags.DEFINE_bool('noise_before_PGD', False, 'decide whether to use noise ')
@@ -40,7 +41,6 @@ flags.DEFINE_list('capacity', None, 'list of attacks to use')
 flags.DEFINE_bool('get_CKA', False, 'compute CKA')
 flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_norm', False, 'decide whether to scale the input noise based on capacity or not')
-
 
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
