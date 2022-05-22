@@ -28,10 +28,11 @@ def main(argv):
     # parse inputs 
     FLAGS = flags.FLAGS
     
-    if FLAGS.device is None:
-        # get device 
-        # FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
-        FLAGS.device = 'cuda:0' 
+    print('######################################## START ########################################')
+
+    # get device
+    if FLAGS.device==None:
+        FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
@@ -150,8 +151,13 @@ def main(argv):
                 eval_mode_str = 'eval'
             else:
                 eval_mode_str = 'no_eval'
+            
+            if str(os.getcwd()).find('bitbucket') != -1:
+                root_dir = './gpucluster/SVHN/'
+            else:
+                root_dir = './results/'
 
-            csv_path_dir = './results/' + model_name + '/' + eval_mode_str + '/'  \
+            csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
                             + FLAGS.attacks_in[0] + '/' 
             
             if FLAGS.relative_accuracy:
