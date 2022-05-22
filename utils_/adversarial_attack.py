@@ -20,11 +20,13 @@ def fgsm(model, X, y, epsilon):
 
     return deltas 
 
-def pgd_linf(model, X, y,  epsilon, max_, min_, alpha, num_iter):
-    """ Construct FGSM adversarial examples on the examples X"""
+def pgd_linf(model, X, y,  epsilon, max_, min_, alpha, num_iter, noise_injection=False):
+    """ Construct PGD adversarial examples on the examples X"""
     deltas = []
     delta = torch.zeros_like(X, requires_grad=True)
     for t in range(num_iter):
+        if noise_injection:
+            model.set_PGD_steps(steps=t)
         loss = nn.CrossEntropyLoss()(model(X + delta), y)
         loss.backward()
         delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
@@ -158,13 +160,15 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
 def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key, get_CKA):
     """ Construct PGD adversarial examples on the examples X"""
+    if isinstance(layer_key, str):
+        layer_key = [layer_key]
     deltas = []
     capacities = dict.fromkeys(layer_key, [])
     activations = dict.fromkeys(layer_key, [])
     delta = torch.zeros_like(X, requires_grad=True)
 
     for t in range(num_iter): 
-        model.get_PGD_steps(steps=t)
+        #model.set_PGD_steps(steps=t)
         loss = nn.CrossEntropyLoss()(model(X + delta), y)
         loss.backward()
         delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)

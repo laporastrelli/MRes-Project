@@ -39,9 +39,9 @@ flags.DEFINE_bool('noise_capacity_constraint', False, 'noise selection based on 
 flags.DEFINE_bool('capacity_calculation', False, 'decide whether to calculate capacity or not')
 flags.DEFINE_list('capacity', None, 'list of attacks to use')
 flags.DEFINE_bool('get_CKA', False, 'compute CKA')
+flags.DEFINE_bool('get_max_indexes', False, 'analysis involving CKA and capacity')
 flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_norm', False, 'decide whether to scale the input noise based on capacity or not')
-
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

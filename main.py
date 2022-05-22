@@ -28,10 +28,16 @@ def main(argv):
     # parse inputs 
     FLAGS = flags.FLAGS
     
-    print('######################################## START ########################################')
+    # set root paths
+    if str(os.getcwd()).find('bitbucket') != -1:
+        FLAGS.root_path = '/data2/users/lr4617'
+        FLAGS.dataset_path = '/data2/users/lr4617/data/'
+    else:
+        FLAGS.root_path = '/vol/bitbucket/lr4617'
+        FLAGS.dataset_path = '/vol/bitbucket/lr4617/data/'
 
     # get device
-    if FLAGS.device==None:
+    if FLAGS.device is None:
         FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
 
     # retrive dataset-corresponding epsilon budget
