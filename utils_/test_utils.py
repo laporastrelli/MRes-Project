@@ -1,3 +1,4 @@
+from tkinter.tix import Tree
 from bleach import clean
 import torch.nn as nn
 import torch
@@ -229,12 +230,14 @@ def adversarial_test(net,
                      get_CKA=False, 
                      eval=True, 
                      custom=True,
-                     save=False):
+                     save=False, 
+                     get_max_indexes=True):
 
-    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+    net.load_state_dict(torch.load(model_path))
+    #net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
-    ################## IMPORTANT ##################
+    ################## MODEL SELECTION ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
         net = noisy_VGG(net, 
@@ -247,7 +250,7 @@ def adversarial_test(net,
                         scaled_noise=scaled_noise, 
                         scaled_noise_norm=scaled_noise_norm)
 
-    elif capacity_calculation:
+    if capacity_calculation or get_CKA:
         print('Calculating Capacity')
         net = proxy_VGG(net, 
                         eval_mode=use_pop_stats,
@@ -255,7 +258,7 @@ def adversarial_test(net,
                         run_name=run_name,
                         noise_variance=noise_variance)
     
-    ################## IMPORTANT ##################
+    ################## EVAL MODE ##################
     if use_pop_stats:
         net.eval()
 
@@ -332,12 +335,12 @@ def adversarial_test(net,
                     
             elif attack == 'PGD':
                 if custom:
-                    if i==1 and capacity_calculation and get_bn_int_from_name(run_name)!=0:
+                    if i==0 and (capacity_calculation or get_CKA) and get_bn_int_from_name(run_name)!=0:
                         net.set_verbose(verbose=True)
                         if run_name.find('bn')!= -1:
                             layer_key = ['BN_' + str(i) for i in range(16)]
                         else:
-                            layer_key = 'BN_0'
+                            layer_key = ['BN_0']
                         delta, capacities, adv_activations = pgd_linf_capacity(net, 
                                                                                X, 
                                                                                y, 
@@ -347,23 +350,31 @@ def adversarial_test(net,
                                                                                alpha=epsilon/10, 
                                                                                num_iter=num_iter, 
                                                                                layer_key=layer_key, 
-                                                                               get_CKA=get_CKA)
-                                                                               
-                        # NOW: computing CKA just for ### VGG19_0 ### configurations
+                                                                               get_CKA=get_CKA)                                                                               
                         if get_CKA and get_bn_int_from_name(run_name)==1:
                             _ = net(X)
-                            clean_activations = net.get_activations()
-
+                            clean_activations = net.get_activations()[layer_key[0]]   
                         net.set_verbose(verbose=False) 
-                        model_name = run_name.split('_')[0]                        
 
+                        if get_max_indexes and get_bn_int_from_name(run_name)==1:
+                            tmp_capacity_idx = torch.argsort(capacities[layer_key[0]][-1] - capacities[layer_key[0]][0])
+                            tmp_CKA_idx = torch.argsort(CKA(clean_activations.to(device), adv_activations[layer_key[0][-1]].to(device), device))
+                        print(tmp_capacity_idx)
+                        print(tmp_CKA_idx)
+
+                        ### create paths
                         if use_pop_stats:
                             eval_mode_str = 'eval'
                         else:
                             eval_mode_str = 'no_eval'
                         
-                        path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
-                                 + attack + '/capacity/'
+                        model_name = run_name.split('_')[0]   
+                        if capacity_calculation:
+                            path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
+                                        + attack + '/capacity/'
+                        if get_CKA:
+                            path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
+                                        + attack + '/CKA/'
 
                         if len(layer_key)==1:
                             if layer_key[0] == 'BN_0':
@@ -392,43 +403,55 @@ def adversarial_test(net,
                         else:
                             folder_names = layer_key
 
-                        for folder_name in folder_names:
-                            if not os.path.isdir(path_out + folder_name):
-                                os.mkdir(path_out + folder_name)
-                            sub_folder_name = str(epsilon).replace('.', '')
-                            if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
-                                os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+                        ### save selected modality
+                        if not get_max_indexes:
+                            for folder_name in folder_names:
+                                if not os.path.isdir(path_out + folder_name):
+                                    os.mkdir(path_out + folder_name)
+                                sub_folder_name = str(epsilon).replace('.', '')
+                                if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
+                                    os.mkdir(path_out + folder_name + '/' + sub_folder_name)
 
-                            t = 0
-                            fig = plt.figure()
-                            for temp in capacities[folder_name]:
-                                x_axis = [t]
-                                for x_, y_ in zip(x_axis, [temp]):
-                                    plt.scatter([x_] * len(y_), y_)
-                                    plt.xlabel('PGD steps')
-                                    plt.ylabel('Capacity Estimate')
-                                    fig.savefig(path_out + folder_name + '/' \
-                                        + sub_folder_name + '/' + run_name + '_capacity.png')
-                                t+=1
-                            plt.xticks(np.arange(0, t))
+                                if capacity_calculation:
+                                    t = 0
+                                    fig = plt.figure()
+                                    for temp in capacities[folder_name]:
+                                        x_axis = [t]
+                                        for x_, y_ in zip(x_axis, [temp]):
+                                            plt.scatter([x_] * len(y_), y_)
+                                            plt.xlabel('PGD steps')
+                                            plt.ylabel('Capacity Estimate')
+                                            fig.savefig(path_out + folder_name + '/' \
+                                                + sub_folder_name + '/' + run_name + '_capacity.png')
+                                        t+=1
+                                    plt.xticks(np.arange(0, t))
 
-                            if get_CKA and get_bn_int_from_name(run_name)==1:
-                                fig = plt.figure()
-                                for step in range(num_iter):
-                                    temp = CKA(clean_activations, adv_activations[str(step)])
-                                    x_axis = [step]                                     
-                                    for x_, y_ in zip(x_axis, [temp]):
-                                        plt.scatter([x_] * len(y_), y_)
-                                        plt.xlabel('PGD steps')
-                                        plt.ylabel('Channel CKA')
-                                        fig.savefig(path_out + folder_name + '/' \
-                                            + sub_folder_name + '/' + run_name + '_capacity.png')
-
+                                if get_CKA and get_bn_int_from_name(run_name)==1:
+                                    fig = plt.figure()
+                                    step = 0
+                                    for adv in adv_activations[folder_name]:
+                                        temp = CKA(clean_activations.to(device), adv.to(device), device)
+                                        x_axis = [step]                                     
+                                        for x_, y_ in zip(x_axis, [temp]):
+                                            plt.scatter([x_] * len(y_), y_)
+                                            plt.xlabel('PGD steps')
+                                            plt.ylabel('Channel CKA')
+                                            fig.savefig(path_out + folder_name + '/' \
+                                                + sub_folder_name + '/' + run_name + '_CKA.png')
+                                        step+=1
                     else:     
-                        if capacity_calculation:
+                        if capacity_calculation or get_CKA:
                             delta = [torch.zeros_like(X)]
                         else:                       
-                            delta = pgd_linf(net, X, y, epsilon, max_tensor, min_tensor, alpha=epsilon/10, num_iter=num_iter)
+                            delta = pgd_linf(net, 
+                                             X, 
+                                             y, 
+                                             epsilon, 
+                                             max_tensor, 
+                                             min_tensor,
+                                             alpha=epsilon/10, 
+                                             num_iter=num_iter, 
+                                             noise_injection=inject_noise)
                     adv_inputs = X + delta[0]
                 else:
                     adversary = LinfPGDAttack(

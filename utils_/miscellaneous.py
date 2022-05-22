@@ -3,6 +3,8 @@ import torch
 import os 
 import math as mt
 
+from zmq import device
+
 def get_minmax(test_loader, device):
     max_ = [-100, -100, -100]
     min_ = [100, 100, 100]
@@ -152,20 +154,23 @@ def set_load_pretrained(train, test_run):
 
     return load_pretrained
 
-def CKA(X_clean, X_adv):
+def CKA(X_clean, X_adv, device):
     X_clean = X_clean.view((X_clean.size(1), X_clean.size(0), -1)) # (ch, batchsize, width^2)
     X_adv = X_adv.view((X_adv.size(1), X_adv.size(0), -1)) # (ch, batchsize, width^2)
-    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1))) # (ch, batchsize, batchsize)
-    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1))) # (ch, batchsize, batchsize)
-    CKA = HSIC(K,L,X_clean.size(0))/(mt.sqrt(HSIC(K,K,X_clean.size(0))*HSIC(L,L,X_clean.size(0)))) # (ch, 1)
-    return CKA
+    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1))).to(device) # (ch, batchsize, batchsize)
+    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1))).to(device) # (ch, batchsize, batchsize)
+    CKA = HSIC(K,L,X_clean.size(0),device)/(torch.sqrt(HSIC(K,K,X_clean.size(0),device)\
+          *HSIC(L,L,X_clean.size(0),device))) # (ch, 1)
+    return CKA.cpu().detach().numpy().tolist()
 
-def HSIC(gram1, gram2, m):
-    return (center(gram1).view((gram1.size(0), -1))*center(gram2).view((gram2.size(0), -1))).sum(axis=1)/((m-1)^2)
+def HSIC(gram1, gram2, m, device):
+    return (center(gram1, device).view((gram1.size(0), -1))\
+           *center(gram2, device).view((gram2.size(0), -1))).sum(axis=1)/((m-1)^2)
 
-def center(matrix):
+def center(matrix, device):
     centering = torch.eye(matrix.size(1)) - (1/matrix.size(1))*torch.ones(matrix.size(1), matrix.size(1))
-    centering = centering.unsqueeze(0).repeat(matrix.size(0), 1, 1, 1)
+    # centering = centering.unsqueeze(0).repeat(matrix.size(0), 1, 1, 1).to(device)
+    centering = centering.to(device)
     centered_matrix = torch.matmul(centering, matrix)
     centered_matrix = torch.matmul(centered_matrix, centering)
     return centered_matrix

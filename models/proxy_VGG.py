@@ -51,7 +51,6 @@ class proxy_VGG(nn.Module):
         for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
-
                 var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                 if self.verbose:
                     self.capacity['BN_' + str(bn_count)] = (var_test * model.weight**2)/model.running_var
