@@ -158,7 +158,7 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
     return deltas
 
-def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key, get_CKA):
+def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key):
     """ Construct PGD adversarial examples on the examples X"""
     if isinstance(layer_key, str):
         layer_key = [layer_key]
