@@ -2,11 +2,13 @@ import torch.nn as nn
 import torch.optim as optim
 import torch 
 import csv
+import math
 
 from absl import flags
 from absl.flags import FLAGS
 from torch._C import _propagate_and_assign_input_shapes
 from utils_ import utils_flags
+from utils_.miscellaneous import get_bn_layer_idx
 
 def train (train_loader, val_loader, model, device, model_name, batch_norm, writer, run_name):
     
@@ -147,6 +149,14 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
 
             yp = model(X)
             loss = nn.CrossEntropyLoss()(yp,y)
+
+            if FLAGS.capacity_regularization:
+                regularizer = 1
+                bn_idx, _ = get_bn_layer_idx
+                for l, idx in enumerate(bn_idx):
+                    regularizer *= 2*math.pi*torch.prod(model[l].weight)
+                loss += FLAGS.beta*(1/2*torch.log2(regularizer))
+                
             opt.zero_grad()
             loss.backward()
 

@@ -3,14 +3,17 @@ from bleach import clean
 import torch.nn as nn
 import torch
 import os
+import csv
 import numpy as np
 import random
+import pickle
 import matplotlib.pyplot as plt
 
 from torchvision import datasets, transforms
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity
 from utils_ import get_model
-from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name, CKA
+from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name, CKA, cosine_similarity
+from utils_.log_utils import get_csv_path, get_csv_keys
 
 #### check ####
 from advertorch.attacks import LinfPGDAttack
@@ -47,12 +50,12 @@ def test(net,
     net.to(device)
     if inject_noise:
         noisy_net = noisy_VGG(net, 
-                                eval_mode=eval_mode,
-                                noise_variance=noise_variance, 
-                                device=device,
-                                capacity_=capacity,
-                                noise_capacity_constraint=noise_capacity_constraint, 
-                                run_name=run_name)
+                              eval_mode=eval_mode,
+                              noise_variance=noise_variance, 
+                              device=device,
+                              capacity_=capacity,
+                              noise_capacity_constraint=noise_capacity_constraint, 
+                              run_name=run_name)
 
     if eval_mode:
         net.eval()
@@ -94,13 +97,13 @@ def test(net,
             pad = torch.nn.ZeroPad2d(tuple(to_pad))
             X = pad(X_crop)
         if inject_noise:
-            '''noisy_net = noisy_VGG(net, 
+            noisy_net = noisy_VGG(net, 
                                   eval_mode=eval_mode,
                                   noise_variance=noise_variance, 
                                   device=device,
                                   capacity_=capacity,
                                   noise_capacity_constraint=noise_capacity_constraint, 
-                                  run_name=run_name)'''
+                                  run_name=run_name)
             outputs = noisy_net(X)
             temp = outputs
         elif get_logits:
@@ -240,12 +243,14 @@ def adversarial_test(net,
                      scaled_noise=False,
                      relative_accuracy=True,
                      scaled_noise_norm=False,
-                     get_CKA=False, 
+                     get_similarity=False, 
                      eval=True, 
                      custom=True,
                      save=False, 
                      save_analysis=True,
-                     get_max_indexes=False):
+                     get_max_indexes=False, 
+                     channel_transfer='', 
+                     n_channels=0):
 
     #net.load_state_dict(torch.load(model_path))
     net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
@@ -264,8 +269,7 @@ def adversarial_test(net,
                         scaled_noise=scaled_noise, 
                         scaled_noise_norm=scaled_noise_norm)
 
-    if capacity_calculation or get_CKA:
-        print('Calculating Capacity')
+    if capacity_calculation or len(get_similarity)>0 or channel_transfer:
         net = proxy_VGG(net, 
                         eval_mode=use_pop_stats,
                         device=device,
@@ -275,11 +279,11 @@ def adversarial_test(net,
     ################## EVAL MODE ##################
     if use_pop_stats:
         net.eval()
-
     # setting dropout to eval mode (in VGG)
     if run_name.find('VGG')!= -1:
         net.classifier.eval()
 
+    ################## VERBOSE ##################
     # printing info
     print('eval MODE:                       ', use_pop_stats)
     print('inject noise MODE:               ', inject_noise)
@@ -303,9 +307,9 @@ def adversarial_test(net,
     # counter for number of samples
     total = 0
     correct_clean = 0
-    temp___ = 0
+    transfer_activation = []
 
-    # adversarial evaluation
+    ################## ADVERSARIAL EVALUATION ##################
     if eval:
         for i, data in enumerate(test_loader, 0):
             X, y = data
@@ -349,8 +353,18 @@ def adversarial_test(net,
                 delta = fgsm(net, X, y, epsilon)
                     
             elif attack == 'PGD':
+                # Custom PGD function
                 if custom:
-                    if i==0 and (capacity_calculation or get_CKA or get_max_indexes) and get_bn_int_from_name(run_name)!=0:
+
+                    if i==0 and (capacity_calculation or len(get_similarity) > 0 or get_max_indexes) and get_bn_int_from_name(run_name)!=0:
+                        ####################################################################################################################
+                        # get similarity only for BN-0 configuration
+                        if len(get_similarity) > 0 and get_bn_int_from_name(run_name)!=1:
+                            correct_s = 100
+                            total = 100
+                            correct_clean = 100
+                            break
+                        # get adversarial perturbations, capacity, layer adversarial activations.  
                         net.set_verbose(verbose=True)
                         if run_name.find('bn')!= -1:
                             layer_key = ['BN_' + str(i) for i in range(16)]
@@ -364,43 +378,47 @@ def adversarial_test(net,
                                                                                min_tensor, 
                                                                                alpha=epsilon/10, 
                                                                                num_iter=num_iter, 
-                                                                               layer_key=layer_key)                                                                               
-                        if get_CKA and get_bn_int_from_name(run_name)==1:
+                                                                               layer_key=layer_key)       
+                        # get layer clean activations for similarity computation                                                                       
+                        if len(get_similarity) > 0 and get_bn_int_from_name(run_name)==1:
                             _ = net(X)
                             clean_activations = net.get_activations()[layer_key[0]]   
+                        # prevent model from returning capacity, layer adversarial activations when not necessary
                         net.set_verbose(verbose=False) 
+                        ####################################################################################################################
 
-                        model_name = run_name.split('_')[0] 
-                        if use_pop_stats:
-                                eval_mode_str = 'eval'
-                        else:
-                            eval_mode_str = 'no_eval'
-                        
-                        ### save channel idxs difference
-                        if get_max_indexes and get_bn_int_from_name(run_name)==1:
-                            tmp_capacity_idx, _ = torch.sort(torch.argsort(torch.Tensor(np.array(capacities[layer_key[0]][-1]) \
-                                            - np.array(capacities[layer_key[0]][0])), descending=False)[0:10])
-                            tmp_CKA_idx, _ = torch.sort(torch.argsort(torch.Tensor(np.array(CKA(clean_activations.to(device),\
-                                        adv_activations[layer_key[0]][-1].to(device), device))), descending=True)[0:10])
-                            ch_diff = torch.abs(tmp_capacity_idx - tmp_CKA_idx)
-                            norm_ch_diff = (ch_diff > torch.zeros_like(ch_diff)).cpu().detach().numpy().tolist()
+                        # save analysis files
+                        if save_analysis and (len(get_similarity) > 0 or capacity_calculation):
+
+                            model_name = run_name.split('_')[0] 
+                            if use_pop_stats:
+                                    eval_mode_str = 'eval'
+                            else:
+                                eval_mode_str = 'no_eval'
                             
-                            path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
-                                        + attack + '/CKA_vs_capacity/' + run_name + '/'
-                            if not os.path.isdir(path_out):
-                                os.mkdir(path_out)
-        
-                            np.save(path_out + 'idx_diff_' + str(epsilon).replace('.', ''), norm_ch_diff)
+                            # save channel idxs difference
+                            if get_max_indexes and get_bn_int_from_name(run_name)==1:
+                                tmp_capacity_idx, _ = torch.sort(torch.argsort(torch.Tensor(np.array(capacities[layer_key[0]][-1]) \
+                                                - np.array(capacities[layer_key[0]][0])), descending=False)[0:10])
+                                tmp_CKA_idx, _ = torch.sort(torch.argsort(torch.Tensor(np.array(CKA(clean_activations.to(device),\
+                                            adv_activations[layer_key[0]][-1].to(device), device))), descending=True)[0:10])
+                                ch_diff = torch.abs(tmp_capacity_idx - tmp_CKA_idx)
+                                norm_ch_diff = (ch_diff > torch.zeros_like(ch_diff)).cpu().detach().numpy().tolist()
+                                
+                                path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
+                                            + attack + '/CKA_vs_capacity/' + run_name + '/'
+                                if not os.path.isdir(path_out):
+                                    os.mkdir(path_out)
+            
+                                np.save(path_out + 'idx_diff_' + str(epsilon).replace('.', ''), norm_ch_diff)
 
-                        ### save analysis files
-                        if save_analysis and (get_CKA or capacity_calculation):
-                            ### create paths
+                            # create paths ########################################################################################
                             if capacity_calculation:
                                 path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
                                             + attack + '/capacity/'
-                            elif get_CKA:
+                            elif len(get_similarity) > 0:
                                 path_out = './results/' + model_name + '/' + eval_mode_str + '/'\
-                                            + attack + '/CKA/'                            
+                                            + attack + '/' + get_similarity + '_similarity' + '/'                        
 
                             if len(layer_key)==1:
                                 if layer_key[0] == 'BN_0':
@@ -429,20 +447,26 @@ def adversarial_test(net,
                                 folder_names = ['BN_' + str(get_bn_int_from_name(run_name)-1)]
                             else:
                                 folder_names = layer_key
+                            ########################################################################################################
 
-                            ### save selected modality
+                            # save selected modality
                             if not get_max_indexes:
                                 for folder_name in folder_names:
+                                    print(folder_name)
                                     if not os.path.isdir(path_out + folder_name):
                                         os.mkdir(path_out + folder_name)
                                     sub_folder_name = str(epsilon).replace('.', '')
                                     if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
-                                        os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+                                        os.mkdir(path_out + folder_name + '/' + sub_folder_name)                                        
 
                                     if capacity_calculation:
                                         t = 0
                                         fig = plt.figure()
-                                        for temp in capacities[folder_name]:
+                                        if len(layer_key)==1:
+                                            key = layer_key[0]
+                                        else:
+                                            key = folder_name
+                                        for temp in capacities[key]:
                                             x_axis = [t]
                                             for x_, y_ in zip(x_axis, [temp]):
                                                 plt.scatter([x_] * len(y_), y_)
@@ -452,38 +476,101 @@ def adversarial_test(net,
                                                     noisy_str = 'noisy - ' + r'$\sigma^2=$' + str(noise_variance)
                                                 else:
                                                     noisy_str = 'deterministic'
-                                                title_str = model_name + ' ' + 'BLOCK' + '-' + \
-                                                            str(get_bn_int_from_name(run_name)-1) + \
-                                                            ' ' + noisy_str
+                                                if get_bn_int_from_name(run_name) == 100:
+                                                    title_str = model_name + ' ' + 'FULL-BN' + ' ' + noisy_str
+                                                else:
+                                                    title_str = model_name + ' ' + 'BLOCK' + '-' + \
+                                                                str(get_bn_int_from_name(run_name)-1) + \
+                                                                ' ' + noisy_str
                                                 plt.title(title_str)
                                                 fig.savefig(path_out + folder_name + '/' \
                                                     + sub_folder_name + '/' + run_name + '_capacity.png')
+                                                
                                             t+=1
                                         plt.xticks(np.arange(0, t))
+                                        print('SAVED!')
 
-                                    if get_CKA and get_bn_int_from_name(run_name)==1:
+                                    if len(get_similarity) > 0 and get_bn_int_from_name(run_name)==1:
                                         fig = plt.figure()
                                         step = 0
                                         for adv in adv_activations[folder_name]:
-                                            temp = CKA(clean_activations.to(device), adv.to(device), device)
+                                            if get_similarity == 'CKA':
+                                                temp = CKA(clean_activations.to(device), adv.to(device), device)
+                                            elif get_similarity == 'cosine':
+                                                temp = cosine_similarity(clean_activations.to(device), adv.to(device), device)
                                             x_axis = [step]                                     
                                             for x_, y_ in zip(x_axis, [temp]):
                                                 plt.scatter([x_] * len(y_), y_)
                                                 plt.xlabel('PGD steps')
-                                                plt.ylabel('Channel CKA')
+                                                plt.ylabel('Channel Similarity ' + '(' + get_similarity + ')')
                                                 fig.savefig(path_out + folder_name + '/' \
-                                                    + sub_folder_name + '/' + run_name + '_CKA.png')
+                                                    + sub_folder_name + '/' + run_name + '_' + get_similarity + '.png')
                                             step+=1
+                    
                     else:     
-                        if capacity_calculation or get_CKA:
-                            print('IN')
+                        if capacity_calculation or len(get_similarity) > 0:
+                            correct_s = 100
+                            total = 100
+                            correct_clean = 100
+                            break
+
+                            '''print('IN')
                             with torch.no_grad():
                                 outputs_clean = net(X)
                             _, predicted_clean = torch.max(outputs_clean.data, 1)
                             print((predicted_clean == y).sum().item())
+                            delta = [torch.zeros_like(X).detach()]'''
+                        
+                        elif len(channel_transfer)>0 and get_bn_int_from_name(run_name)==1:
+                            
+                            fname = './results/VGG19/eval/PGD/channel_transfer/' + channel_transfer + '.npy'
+                            curr_key = str(run_name + '_' + str(epsilon))
+                            csv_dict = np.load(fname, allow_pickle='TRUE').item()
+                            if curr_key in csv_dict.keys() and len(csv_dict[curr_key]) == 9:
+                                correct_s = 100
+                                total = 100
+                                correct_clean = 100
+                                print('------ KEY ALREADY FULL ------')
+                                break
 
-                            delta = [torch.zeros_like(X)]
-                        else:                       
+                            print('FEATURE TRANSFER MODE')
+                            net.set_verbose(verbose=True)
+                            if run_name.find('bn')!= -1:
+                                layer_key = ['BN_' + str(i) for i in range(16)]
+                            else:
+                                layer_key = ['BN_0']
+                            _, capacities, adv_activations = pgd_linf_capacity(net, 
+                                                                                X, 
+                                                                                y, 
+                                                                                epsilon, 
+                                                                                max_tensor, 
+                                                                                min_tensor, 
+                                                                                alpha=epsilon/10, 
+                                                                                num_iter=num_iter, 
+                                                                                layer_key=layer_key)         
+                            bn_variance = net.get_bn_parameters()['BN_0']       
+
+                            
+                            net.set_verbose(verbose=False)
+                            if channel_transfer == 'largest':
+                                descending = True
+                            elif channel_transfer == 'smallest':
+                                descending = False
+
+                            tmp_capacity_idx = torch.argsort(torch.Tensor(np.array(capacities[layer_key[0]][-1]) \
+                                               - np.array(capacities[layer_key[0]][0])), descending=descending)
+                            if int(n_channels) != 0:
+                                print('MULTIPLE FEATURES TRANSFER')
+                                capacity_ch = tmp_capacity_idx[0:(int(n_channels)*8)-1].cpu().detach().numpy()
+                            else:
+                                print('SINGLE FEATURE TRANSFER')
+                                capacity_ch = tmp_capacity_idx[0].cpu().detach().numpy()
+                            capacity_activations = adv_activations[layer_key[0]][-1][:, capacity_ch, :, :]
+                            print(capacity_ch, int(layer_key[0][-1]), capacity_activations.size())
+                            transfer_activation = [capacity_ch, int(layer_key[0][-1]), capacity_activations]
+                            delta = [torch.zeros_like(X).detach()]
+                        
+                        else:                           
                             delta = pgd_linf(net, 
                                              X, 
                                              y, 
@@ -493,7 +580,10 @@ def adversarial_test(net,
                                              alpha=epsilon/10, 
                                              num_iter=num_iter, 
                                              noise_injection=inject_noise)
+                    
                     adv_inputs = X + delta[0]
+                
+                # Advertorch PGD function
                 else:
                     adversary = LinfPGDAttack(
                                     net, loss_fn=nn.CrossEntropyLoss(), eps=epsilon,
@@ -514,7 +604,10 @@ def adversarial_test(net,
                     net.eval()
 
                 with torch.no_grad():
-                    outputs = net(adv_inputs)
+                    if len(channel_transfer) > 0:
+                        outputs = net(X, transfer_activation)
+                    else:
+                        outputs = net(adv_inputs)
                     outputs_clean = net(X)
 
                 _, predicted_clean = torch.max(outputs_clean.data, 1)
@@ -522,10 +615,38 @@ def adversarial_test(net,
                 
                 correct_clean += (predicted_clean == y).sum().item()
 
-                print('------------------------------: ', (predicted_clean == y).sum().item())
- 
+                print('clean ------------------------------: ', (predicted_clean == y).sum().item())
+                print('adversarial ------------------------------: ', (predicted == y).sum().item())
+
                 total += y.size(0)
                 correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+
+                if len(channel_transfer) > 0 and i==20:
+                    fname = './results/VGG19/eval/PGD/channel_transfer/' + channel_transfer + '.npy'
+                    curr_key = str(run_name + '_' + str(epsilon))
+
+                    if not os.path.isfile(fname):
+                        csv_dict = {curr_key: [correct_s/correct_clean]}
+                        np.save(fname, csv_dict)
+                    else:
+                        csv_dict = np.load(fname, allow_pickle='TRUE').item()
+                        print(csv_dict.keys())
+                        
+                        if curr_key in csv_dict.keys():
+                            temp = csv_dict[curr_key]
+                            to_add = []
+                            for iiii in range(len(temp)+1):
+                                if iiii<len(temp):
+                                    to_add.append(csv_dict[curr_key][iiii])
+                                elif iiii == len(temp):
+                                    to_add.append(correct_s/correct_clean)
+                            csv_dict[curr_key] = to_add
+                        else:
+                            csv_dict.update({curr_key:[correct_s/correct_clean]})
+
+                        print(csv_dict)
+                        np.save(fname, csv_dict)
+                    break
 
             else:
                 for k, idv_delta in enumerate(delta):

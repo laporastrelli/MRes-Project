@@ -29,10 +29,17 @@ def get_csv_path(model_name):
         if not os.path.isdir(csv_path_dir + 'noisy_test/'):
             os.mkdir(csv_path_dir + 'noisy_test/')
         csv_path_dir = csv_path_dir + 'noisy_test/'
+    
+    if len(FLAGS.channel_transfer) > 0 :
+        if not os.path.isdir(csv_path_dir + 'channel_transfer/'):
+            os.mkdir(csv_path_dir + 'channel_transfer/')
+        csv_path_dir = csv_path_dir + 'channel_transfer/'
+        FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
+                            + 'results_' + eval_mode_str + '_' + acc_mode + FLAGS.channel_transfer +  '.csv'
                 
     if len(os.listdir(csv_path_dir)) == 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
-                            + 'results_' + eval_mode_str + + acc_mode + '.csv'
+                            + 'results_' + eval_mode_str + '_' + acc_mode + '.csv'
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
@@ -66,5 +73,17 @@ def check_log(run_name, log_file):
             break
 
     return already_exists
+
+def get_csv_keys(csv_path, key=''):
+    keys = []
+    file = open(csv_path)
+    csvreader = csv.reader(file)
+    for row in csvreader:
+        if len(row) > 0 and str(row[0]).find(key)!=-1:
+            keys.append(str(row[0]))
+
+    return keys
+
+
 
 

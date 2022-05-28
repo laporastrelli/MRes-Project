@@ -1,5 +1,6 @@
 from cProfile import run
 import torch 
+import torch.nn as nn
 import os 
 import math as mt
 
@@ -103,7 +104,7 @@ def get_epsilon_budget(dataset):
 
     if dataset == 'CIFAR10':
         # 2/255, 5/255, 8/255, 10/255, 12/255, 16/255, 0.1, 0.2
-        epsilon_in = [0.0392, 0.0980, 0.1565, 0.1961, 0.2352, 0.3137, 0.5, 1,]
+        epsilon_in = [0.0392, 0.0980, 0.1565, 0.1961, 0.2352, 0.3137, 0.5, 1]
 
     # epsilon budget for SVHN
     if dataset == 'SVHN':
@@ -154,11 +155,19 @@ def set_load_pretrained(train, test_run):
 
     return load_pretrained
 
+def resize(X):
+    # (ch, batchsize, height, width) --> (ch, batchsize, height x width)
+    return X.view((X.size(1), -1)) 
+
+def get_gram(X, device):
+    # (ch, batchsize, height x width) --> (ch, batchsize, batchsize)
+    return torch.matmul(X, torch.permute(X, (0, 2, 1))).to(device)
+
 def CKA(X_clean, X_adv, device):
-    X_clean = X_clean.view((X_clean.size(1), X_clean.size(0), -1)) # (ch, batchsize, width^2)
-    X_adv = X_adv.view((X_adv.size(1), X_adv.size(0), -1)) # (ch, batchsize, width^2)
-    K = torch.matmul(X_clean, torch.permute(X_clean, (0, 2, 1))).to(device) # (ch, batchsize, batchsize)
-    L = torch.matmul(X_adv, torch.permute(X_adv, (0, 2, 1))).to(device) # (ch, batchsize, batchsize)
+    X_clean = resize(X_clean)
+    X_adv = resize(X_adv)
+    K = get_gram(X_clean, device)
+    L = get_gram(X_adv, device)
     CKA = HSIC(K,L,X_clean.size(0),device)/(torch.sqrt(HSIC(K,K,X_clean.size(0),device)\
           *HSIC(L,L,X_clean.size(0),device))) # (ch, 1)
     return CKA.cpu().detach().numpy().tolist()
@@ -174,3 +183,20 @@ def center(matrix, device):
     centered_matrix = torch.matmul(centering, matrix)
     centered_matrix = torch.matmul(centered_matrix, centering)
     return centered_matrix
+
+def cosine_similarity(X_clean, X_adv, device):
+    X_clean = resize(X_clean).to(device)
+    X_adv = resize(X_adv).to(device)
+    return torch.nn.functional.cosine_similarity(X_clean, X_adv).cpu().detach().numpy().tolist()
+
+def get_bn_layer_idx(model, model_name):
+    bn_idx = []
+    num_channels = []
+    if model_name.find('VGG')!= -1:
+        features = nn.ModuleList(list(model.features))
+        for ii, layer in enumerate(features):
+            if isinstance(layer, torch.nn.modules.batchnorm.BatchNorm2d):
+                bn_idx.append(ii)
+                num_channels.append(model.weight.size(0))
+
+    return bn_idx

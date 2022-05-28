@@ -30,6 +30,8 @@ class proxy_VGG(nn.Module):
         self.activations = {}
         self.verbose = verbose
         self.run_name = run_name
+        self.bn_parameters = {}
+        self.test_variance = {}
 
         features = list(net.features)
         
@@ -46,7 +48,7 @@ class proxy_VGG(nn.Module):
             self.classifier = net.classifier
         ###########################################
 
-    def forward(self, x):
+    def forward(self, x, ch_activation=list()):
         bn_count = 0
         for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
@@ -54,9 +56,22 @@ class proxy_VGG(nn.Module):
                 var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                 if self.verbose:
                     self.capacity['BN_' + str(bn_count)] = (var_test * model.weight**2)/model.running_var
-                    self.activations['BN_' + str(bn_count)] = x
+                    self.activations['BN_' + str(bn_count)] = x 
+                    self.bn_parameters['BN_' + str(bn_count)] = model.running_var
+                    self.test_variance['BN_' + str(bn_count)] = var_test
+                
+                if len(ch_activation)> 0:
+                    ch, bn_idx, activation = ch_activation
+                    if bn_count == bn_idx: 
+                        print('TRANSFERRING CHANNEL')
+                        if isinstance(ch, list):
+                            for idx_ in ch:
+                                x[:, idx_, :, :] = activation[idx_]
+                        else:
+                            x[:, ch, :, :] = activation
 
                 bn_count += 1
+
             x = model(x)
 
             if self.noise_variance != float(0):
@@ -73,6 +88,12 @@ class proxy_VGG(nn.Module):
     
     def get_activations(self):
         return self.activations
+    
+    def get_bn_parameters(self):
+        return self.bn_parameters
+    
+    def get_test_variance(self):
+        return self.test_variance
 
     def get_noisy_mode(self):
         if self.noise_variance == float(0):
