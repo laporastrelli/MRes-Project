@@ -247,8 +247,8 @@ def adversarial_test(net,
                      save_analysis=True,
                      get_max_indexes=False):
 
-    net.load_state_dict(torch.load(model_path))
-    #net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+    #net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## MODEL SELECTION ##################
