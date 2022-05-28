@@ -165,6 +165,7 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
     deltas = []
     capacities = dict.fromkeys(layer_key, [])
     activations = dict.fromkeys(layer_key, [])
+    test_variance = dict.fromkeys(layer_key, [])
     delta = torch.zeros_like(X, requires_grad=True)
 
     for t in range(num_iter): 
@@ -179,6 +180,8 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
             if t == 0:
                 capacities[key] = model.get_capacity()[key].cpu().detach().numpy().tolist()
                 activations[key] = model.get_activations()[key]
+            elif t == num_iter - 1:
+                test_variance[key] = model.get_test_variance()[key].cpu().detach().numpy().tolist()
             else:
                 to_add = []
                 to_add_act = []

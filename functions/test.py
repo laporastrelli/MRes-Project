@@ -106,9 +106,11 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    random_resizing=FLAGS.random_resizing, 
                                                    scaled_noise=FLAGS.scaled_noise, 
                                                    scaled_noise_norm=FLAGS.scaled_noise_norm, 
-                                                   get_CKA=FLAGS.get_CKA,
+                                                   get_similarity=FLAGS.get_similarity,
                                                    relative_accuracy=FLAGS.relative_accuracy,
-                                                   get_max_indexes=FLAGS.get_max_indexes)
+                                                   get_max_indexes=FLAGS.get_max_indexes, 
+                                                   channel_transfer=FLAGS.channel_transfer, 
+                                                   n_channels=FLAGS.n_channels)
         
         outputs.append(adv_test_acc)
         

@@ -35,6 +35,10 @@ def main(argv):
         csv_path = get_csv_path(FLAGS.model_name)
         already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
     print('ALREAD EXISTS: ', already_exists)
+
+    if len(FLAGS.channel_transfer) > 0: 
+        if get_bn_int_from_name(run_name=FLAGS.pretrained_name) != 1:
+            already_exists = True
     
     # set root paths
     if str(os.getcwd()).find('bitbucket') != -1:
