@@ -47,7 +47,7 @@ flags.DEFINE_string('channel_transfer', '', 'implement feature transfer for test
 flags.DEFINE_integer('n_channels', 0, 'number of channels to transfer')
 
 flags.DEFINE_bool('capacity_regularization', False, 'use capacity regularization')
-flags.DEFINE_bool('beta', 0.01, 'lagrangian multiplier for capacity regularization')
+flags.DEFINE_float('beta', 0.01, 'lagrangian multiplier for capacity regularization')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
