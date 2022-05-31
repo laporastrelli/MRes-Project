@@ -3,6 +3,7 @@ import torch.optim as optim
 import torch 
 import csv
 import math
+import wandb
 
 from absl import flags
 from absl.flags import FLAGS
@@ -10,11 +11,25 @@ from torch._C import _propagate_and_assign_input_shapes
 from utils_ import utils_flags
 from utils_.miscellaneous import get_bn_layer_idx
 
-def train (train_loader, val_loader, model, device, model_name, batch_norm, writer, run_name):
-    
+
+
+def train (train_loader, 
+           val_loader, 
+           model, 
+           device, 
+           model_name, 
+           batch_norm, 
+           writer, 
+           run_name):
+
     # parse inputs 
     FLAGS = flags.FLAGS
 
+    # init server for wandb
+    if FLAGS.save_to_wandb:
+        run = wandb.init(project="capacity-regularization", 
+                         entity="information-theoretic-view-of-bn", 
+                         name=run_name)
     # cuda settings
     torch.cuda.empty_cache()
 
@@ -136,6 +151,31 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             opt = opt_func(model.parameters(), lr=lr_,  momentum=momentum, weight_decay=weight_decay)
             scheduler = lr_scheduler(opt, 'min', patience=6)
 
+    # wandb config
+    if FLAGS.save_to_wandb:
+        if sum(FLAGS.where_bn)==0:
+            bn_string = 'No'
+        elif sum(FLAGS.where_bn)>1:
+            bn_string = 'Yes - ' + 'all'
+        else:
+            bn_string = 'Yes - ' + str(FLAGS.where_bn.index(1) + 1) + ' of ' + str(len(FLAGS.where_bn))
+        config = {
+            "run_name": run_name,
+            "bn_config": bn_string,
+            "dataset": FLAGS.dataset,
+            "batch_size": FLAGS.batch_size,
+            "optimizer": opt_func,
+            "capacity_regularization": FLAGS.capacity_regularization,
+            "regularization_mode": FLAGS.regularization_mode,
+            "beta": FLAGS.beta,
+            "learning_rate": lr_,
+            "learning_rate_scheduler": lr_scheduler,
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "gradient_clipping": grad_clip, 
+            "epochs": n_epochs}
+        run.config.update(config)
+
     print('LR scheduler: ', lr_scheduler)
     print('Starting LR: ', lr_)
 
@@ -143,20 +183,45 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
     for epoch_num in range(n_epochs):
         model.train()
         total_loss, total_err = 0.,0.
+        total_regularizer = 0
+        total = 0
         for i, data in enumerate(train_loader, 0):
+            loss = 0
             X,y = data
             X,y = X.to(device), y.to(device)
 
+            if FLAGS.capacity_regularization:
+                model.set_verbose(verbose=True)
             yp = model(X)
             loss = nn.CrossEntropyLoss()(yp,y)
 
             if FLAGS.capacity_regularization:
-                regularizer = 1
-                bn_idx, _ = get_bn_layer_idx
-                for l, idx in enumerate(bn_idx):
-                    regularizer *= 2*math.pi*torch.prod(model[l].weight)
-                loss += FLAGS.beta*(1/2*torch.log2(regularizer))
-                
+                if FLAGS.regularization_mode == 'gauss_entropy':
+                    regularizer = 1
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    num_channels = 0
+                    for _, idx in enumerate(bn_idx):
+                        if i > 0:
+                            regularizer *= torch.prod(2*math.pi*(model.features[idx].weight**2))
+                        num_channels += model.features[idx].weight.size(0) 
+                    loss += FLAGS.beta*(((1/2*math.log2(regularizer)) + num_channels/2)/num_channels)
+                elif FLAGS.regularization_mode == 'capacity': 
+                    regularizer = 1 
+                    layer_key = ['BN_0', 'BN_1']
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    for mm, idx in enumerate(bn_idx):
+                        if i == 0 and epoch_num == 0:
+                            regularizer =  1
+                        else:
+                            test_var = model.get_test_variance()[layer_key[mm]].cpu().detach().numpy().tolist()
+                            model.set_verbose(verbose=False)
+                            for ll in range(len(test_var)):
+                                regularizer *=  1 + ((test_var[ll] * model.features[idx].weight[ll].cpu().detach().numpy()**2) / \
+                                                (model.features[idx].running_var[ll].cpu().detach().numpy()))
+                                
+                               
+                    loss += FLAGS.beta*(1/2*math.log2(regularizer))
+
             opt.zero_grad()
             loss.backward()
 
@@ -168,21 +233,21 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             if lr_scheduler == optim.lr_scheduler.OneCycleLR:
                 scheduler.step()
 
+            total += y.size(0)
             total_err += (yp.max(dim=1)[1] != y).sum().item()
             total_loss += loss.item()
+            total_regularizer += FLAGS.beta*(1/2*math.log2(regularizer))
 
         print(*("{:.6f}".format(i) for i in (int(epoch_num), total_err/len(train_loader.dataset), total_loss/len(train_loader.dataset))), sep="\t")
-
-        writer.add_scalar('Training accuracy',
-                        1 - (total_err/len(train_loader.dataset)),
-                        epoch_num* len(train_loader) + i)
-
-        writer.add_scalar('Training loss',
-                        total_loss/len(train_loader.dataset),
-                        epoch_num* len(train_loader) + i)
+        
+        if FLAGS.save_to_wandb:
+            run.log({"loss_train": total_loss/len(train_loader)})
+            run.log({"regularizer_train": total_regularizer/len(train_loader)})
+            run.log({"acc_train": (total - total_err)/total})
 
         ################ Validation ################
         valid_loss = 0.0
+        valid_regularizer = 0.0
         model.eval()
       
         correct = 0
@@ -197,7 +262,35 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
                 _, predicted = torch.max(outputs.data, 1)
 
                 loss = nn.CrossEntropyLoss()(outputs,y)
+
+                if FLAGS.capacity_regularization:
+                    if FLAGS.regularization_mode == 'gauss_entropy':
+                        regularizer = 1
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        num_channels = 0
+                        for _, idx in enumerate(bn_idx):
+                            if i > 0:
+                                regularizer *= torch.prod(2*math.pi*(model.features[idx].weight**2))
+                            num_channels += model.features[idx].weight.size(0) 
+                        loss += FLAGS.beta*(((1/2*math.log2(regularizer)) + num_channels/2)/num_channels)
+                    elif FLAGS.regularization_mode == 'capacity': 
+                        regularizer = 1 
+                        layer_key = ['BN_0', 'BN_1']
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        for mm, idx in enumerate(bn_idx):
+                            if i == 0 and epoch_num == 0:
+                                regularizer =  1
+                            else:
+                                test_var = model.get_test_variance()[layer_key[mm]].cpu().detach().numpy().tolist()
+                                model.set_verbose(verbose=False)
+                                for ll in range(len(test_var)):
+                                    regularizer *=  1 + ((test_var[ll] * model.features[idx].weight[ll].cpu().detach().numpy()**2) / \
+                                                    (model.features[idx].running_var[ll].cpu().detach().numpy()))
+        
+                        loss += FLAGS.beta*(1/2*math.log2(regularizer))
+
                 valid_loss += loss.item()
+                valid_regularizer += regularizer
 
                 total += y.size(0)
                 correct += (predicted == y).sum().item()
@@ -205,28 +298,21 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
             print('Validation Accuracy: %d %%' % (100 * correct / total))
 
             val_acc = correct / total
-
-            writer.add_scalar('Validation accuracy',
-                            val_acc,
-                            epoch_num* len(val_loader) + i)
-            writer.add_scalar('Validation loss',
-                            valid_loss/len(val_loader.dataset),
-                            epoch_num* len(val_loader) + i)
+            
+            if FLAGS.save_to_wandb:
+                run.log({"loss_validation": valid_loss/len(val_loader)})
+                run.log({"regularizer_validation": valid_regularizer/len(val_loader)})
+                run.log({"acc_validation": correct / total})
 
         if lr_scheduler == optim.lr_scheduler.ReduceLROnPlateau:
             scheduler.step(valid_loss/len(val_loader.dataset))
         else:
             scheduler.step()
 
-    metric_dict = {'tes_acc': str(val_acc), 'test_loss': str(valid_loss)}
-    # writer.add_hparams(hparam_dict, metric_dict, run_name=run_name)
-
-    return model
-
-
-
-
-
+    if FLAGS.save_to_wandb:
+        return model, run 
+    else:
+        return model
 
 
 
@@ -237,6 +323,25 @@ def train (train_loader, val_loader, model, device, model_name, batch_norm, writ
 
 
     '''if lr_scheduler != optim.lr_scheduler.MultiStepLR and lr_scheduler != optim.lr_scheduler.StepLR: interval = 'n.a.'
+
+
+    metric_dict = {'tes_acc': str(val_acc), 'test_loss': str(valid_loss)}
+    # writer.add_hparams(hparam_dict, metric_dict, run_name=run_name)
+
+    writer.add_scalar('Validation accuracy',
+                            val_acc,
+                            epoch_num* len(val_loader) + i)
+    writer.add_scalar('Validation loss',
+                    valid_loss/len(val_loader.dataset),
+                    epoch_num* len(val_loader) + i)
+
+    writer.add_scalar('Training accuracy',
+                        1 - (total_err/len(train_loader.dataset)),
+                        epoch_num* len(train_loader) + i)
+
+    writer.add_scalar('Training loss',
+                        total_loss/len(train_loader.dataset),
+                        epoch_num* len(train_loader) + i)
 
     str_interval = ''
     for i, el in enumerate(interval):

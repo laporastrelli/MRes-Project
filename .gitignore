@@ -156,6 +156,7 @@ scripts/
 entropy_analysis/
 runnables/
 gpucluster/
+wandb/
 
 
 # Files

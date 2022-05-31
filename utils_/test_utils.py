@@ -10,6 +10,7 @@ import pickle
 import matplotlib.pyplot as plt
 
 from torchvision import datasets, transforms
+from torchvision.utils import save_image
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity
 from utils_ import get_model
 from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name, CKA, cosine_similarity
@@ -21,6 +22,7 @@ from advertorch.attacks import LinfPGDAttack
 
 #### temporary ####
 from models.proxy_VGG import proxy_VGG
+from models.proxy_VGG2 import proxy_VGG2
 from models.noisy_VGG import noisy_VGG
 from models.test_VGG import test_VGG
 #### temporary ####
@@ -46,7 +48,8 @@ def test(net,
         capacity=0,
         get_logits=False):
 
-    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+    # net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+    net.load_state_dict(torch.load(model_path))
     net.to(device)
     if inject_noise:
         noisy_net = noisy_VGG(net, 
@@ -137,7 +140,6 @@ def test(net,
 
                     if torch.equal(loss_after, torch.zeros_like(loss_after)):
                         print(torch.max(delta.grad.detach()))
-                    
                     print('LOSS AFTER: ', loss_after)
 
             # run adversarial attack
@@ -247,7 +249,7 @@ def adversarial_test(net,
                      eval=True, 
                      custom=True,
                      save=False, 
-                     save_analysis=True,
+                     save_analysis=False,
                      get_max_indexes=False, 
                      channel_transfer='', 
                      n_channels=0):
@@ -353,9 +355,10 @@ def adversarial_test(net,
                 delta = fgsm(net, X, y, epsilon)
                     
             elif attack == 'PGD':
-                # Custom PGD function
+                # ------ Custom PGD function
                 if custom:
-
+                    
+                    # get capacity mode
                     if i==0 and (capacity_calculation or len(get_similarity) > 0 or get_max_indexes) and get_bn_int_from_name(run_name)!=0:
                         ####################################################################################################################
                         # get similarity only for BN-0 configuration
@@ -383,13 +386,22 @@ def adversarial_test(net,
                         if len(get_similarity) > 0 and get_bn_int_from_name(run_name)==1:
                             _ = net(X)
                             clean_activations = net.get_activations()[layer_key[0]]   
+                        '''# ------------ TEMP ------------:
+                        bn_dict = net.get_bn_parameters()
+                        test_var = net.get_test_variance()
+                        fig = plt.figure()
+                        # plt.scatter(bn_dict[layer_key[0]][1].cpu().detach().numpy(), capacities[layer_key[0]][0])
+                        plt.scatter(test_var[layer_key[0]].cpu().detach().numpy(), capacities[layer_key[0]][0])
+                        plt.xlabel('Population Variance')
+                        plt.ylabel('Capacity')
+                        plt.savefig('./temp.jpg')
+                        # ------------ TEMP -------------'''
                         # prevent model from returning capacity, layer adversarial activations when not necessary
                         net.set_verbose(verbose=False) 
                         ####################################################################################################################
-
+                        
                         # save analysis files
                         if save_analysis and (len(get_similarity) > 0 or capacity_calculation):
-
                             model_name = run_name.split('_')[0] 
                             if use_pop_stats:
                                     eval_mode_str = 'eval'
@@ -508,19 +520,14 @@ def adversarial_test(net,
                                             step+=1
                     
                     else:     
+                        # if capacity is recorded then break
                         if capacity_calculation or len(get_similarity) > 0:
                             correct_s = 100
                             total = 100
                             correct_clean = 100
                             break
-
-                            '''print('IN')
-                            with torch.no_grad():
-                                outputs_clean = net(X)
-                            _, predicted_clean = torch.max(outputs_clean.data, 1)
-                            print((predicted_clean == y).sum().item())
-                            delta = [torch.zeros_like(X).detach()]'''
                         
+                        # channel transfer mode
                         elif len(channel_transfer)>0 and get_bn_int_from_name(run_name)==1:
                             
                             fname = './results/VGG19/eval/PGD/channel_transfer/' + channel_transfer + '.npy'
@@ -570,6 +577,7 @@ def adversarial_test(net,
                             transfer_activation = [capacity_ch, int(layer_key[0][-1]), capacity_activations]
                             delta = [torch.zeros_like(X).detach()]
                         
+                        # compute PGD 
                         else:                           
                             delta = pgd_linf(net, 
                                              X, 
@@ -583,7 +591,7 @@ def adversarial_test(net,
                     
                     adv_inputs = X + delta[0]
                 
-                # Advertorch PGD function
+                # ------ Advertorch PGD function
                 else:
                     adversary = LinfPGDAttack(
                                     net, loss_fn=nn.CrossEntropyLoss(), eps=epsilon,
@@ -709,6 +717,94 @@ def adversarial_test(net,
         return acc.tolist()
     else:
         return acc
+
+def saliency_map(model, 
+                 model_path, 
+                 test_loader, 
+                 device, 
+                 run_name,
+                 eval_mode=True, 
+                 adversarial=False, 
+                 epsilon=0.0392):
+    
+    model.load_state_dict(torch.load(model_path))
+    model.to(device)
+
+    net = proxy_VGG2(model, 
+                     eval_mode=eval_mode,
+                     device=device,
+                     run_name=run_name,
+                     noise_variance=0)
+
+    if eval_mode:
+        net.eval()
+
+    X, y = next(iter(test_loader))
+    X, y = X.to(device), y.to(device) 
+
+    if adversarial:
+        min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+        delta = pgd_linf(net, 
+                        X, 
+                        y, 
+                        epsilon, 
+                        max_tensor, 
+                        min_tensor,
+                        alpha=epsilon/10, 
+                        num_iter=40)
+        X = X + delta[0]   
+
+    score = net(X)
+    pred_score, predicted = torch.max(score, 1)
+    max_score = torch.max(pred_score)
+
+    for j, _ in enumerate(X): 
+        get_gradient = False
+        if (not adversarial and predicted[j] == y[j]) or (adversarial and predicted[j] != y[j]):
+            score = net(X[j].unsqueeze(0))
+            pred_score = torch.max(score)
+            norm_score = pred_score/max_score
+            norm_score.backward(retain_graph=True)
+            saliency_map = net.bn1.grad
+            print("Are grads None: ", saliency_map is None)
+            saliency_map.zero_()
+
+        root_path = '.results/VGG19/'
+        if eval_mode:
+            root_path += 'eval/'
+        else:   
+            root_path += 'no_eval/' 
+            
+        root_path += 'PGD/saliency_maps/'
+
+        if adversarial:
+            root_path += 'adversarial/'
+        else:
+            root_path += 'clean/'
+
+        if not os.path.isdir(root_path):
+            os.mkdir(root_path)
+
+        if adversarial:
+            root_path += str(epsilon).replace('.', '') + '/'
+        if not os.path.isdir(root_path):
+            os.mkdir(root_path)
+
+        root_path += run_name + '/'
+        if not os.path.isdir(root_path):
+            os.mkdir(root_path)
+
+        root_path += 'img_' + str(j) + '/'
+        if not os.path.isdir(root_path):
+            os.mkdir(root_path)
+            
+        if j > 10:
+            save_image(X[j].numpy(), root_path + 'sample_' + str(j) + 'jpg')
+            break
+
+        for jj in range(saliency_map.size(1)):
+            save_image(saliency_map[0, jj, :, :].numpy(), \
+                root_path + 'ch' + str(jj) + 'jpg')
 
 def cross_model_testing(file_name, 
                         mode, 

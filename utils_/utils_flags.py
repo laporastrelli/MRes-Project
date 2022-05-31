@@ -35,6 +35,7 @@ flags.DEFINE_bool('use_pop_stats', False, 'decide whether to use .eval() mode')
 flags.DEFINE_bool('no_eval_clean', False, 'for adversarial testing with clean batch stats')
 flags.DEFINE_bool('get_logits', False, 'print decision logits')
 flags.DEFINE_bool('save_to_log', False, 'save results to log')
+flags.DEFINE_bool('save_to_wandb', False, 'save to weights and biases server')
 
 flags.DEFINE_bool('noise_capacity_constraint', False, 'noise selection based on KL capacity constraint')
 flags.DEFINE_bool('capacity_calculation', False, 'decide whether to calculate capacity or not')
@@ -43,11 +44,15 @@ flags.DEFINE_string('get_similarity', '', 'compute similarity based on the selec
 flags.DEFINE_bool('get_max_indexes', False, 'analysis involving CKA and capacity')
 flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_norm', False, 'decide whether to scale the input noise based on capacity or not')
+flags.DEFINE_bool('scaled_noise_total', False, 'noise scaling based on total fixed capacity')
 flags.DEFINE_string('channel_transfer', '', 'implement feature transfer for testing')
 flags.DEFINE_integer('n_channels', 0, 'number of channels to transfer')
 
 flags.DEFINE_bool('capacity_regularization', False, 'use capacity regularization')
-flags.DEFINE_float('beta', 0.01, 'lagrangian multiplier for capacity regularization')
+flags.DEFINE_float('beta', 0.1, 'lagrangian multiplier for capacity regularization')
+flags.DEFINE_string('regularization_mode', '', 'capacity mode to choose from: "gauss_entropy" or "capacity"')
+
+flags.DEFINE_bool('get_saliency_map', False, 'get saliency maps')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
