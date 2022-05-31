@@ -1,6 +1,6 @@
 from absl.flags import FLAGS
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG
 from utils_ import utils_flags
 
 def get_model(model_name, where_bn):
@@ -49,6 +49,13 @@ def get_model(model_name, where_bn):
         if FLAGS.train_noisy:
             print("Noisy Training ...")
             net = noisy_VGG_train.noisy_VGG_train(net, FLAGS.train_noise_variance, FLAGS.device)
+        
+        if FLAGS.capacity_regularization:
+            print('Training with capacity regularization ...')
+            net = proxy_VGG.proxy_VGG(net, 
+                            eval_mode=FLAGS.use_pop_stats,
+                            device=FLAGS.device,
+                            noise_variance=FLAGS.noise_variance)
 
     elif model_name == 'VGG16':
         if sum(where_bn)==0:

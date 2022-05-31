@@ -26,13 +26,10 @@ from absl import flags
 from functions.get_entropy import get_layer_entropy
 
 
-def test(run_name, standard=True, adversarial=False, get_features=False):
+def test(run_name, standard=True, adversarial=False, get_features=False, get_saliency_map=False):
 
-    if get_features:
+    if get_features or adversarial or get_saliency_map:
         standard = False
-
-    if adversarial:
-        standard = False    
 
     FLAGS = flags.FLAGS
 
@@ -58,6 +55,15 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                    capacity=FLAGS.capacity,
                                    get_logits=FLAGS.get_logits)
         outputs.append(test_acc)
+    
+    if get_saliency_map:
+        test_utils.saliency_map(net, 
+                                PATH_to_model, 
+                                test_loader, 
+                                device, 
+                                run_name=run_name,
+                                eval_mode=FLAGS.use_pop_stats,
+                                adversarial=FLAGS.adversarial_test)
     
     # get features of specific layers in the model
     if get_features:
@@ -113,7 +119,7 @@ def test(run_name, standard=True, adversarial=False, get_features=False):
                                                    n_channels=FLAGS.n_channels)
         
         outputs.append(adv_test_acc)
-        
+
     if len(outputs) == 1:
         return outputs[0]
     else:

@@ -5,6 +5,8 @@ import os
 import numpy as np
 import csv
 import torch
+import wandb
+
 from torch.utils.tensorboard import SummaryWriter
 from utils_ import utils_flags
 from absl import app
@@ -16,10 +18,6 @@ from utils_.miscellaneous import get_epsilon_budget, get_bn_int_from_name, get_b
 from utils_.set_test_run import set_test_run
 from utils_.log_utils import get_csv_path, check_log
 
-# TODO: change this to be adaptive to the number of attacks and epsilon used
-columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-               'Training Mode', 'Test Accuracy', 'Epsilon Budget',
-               'PGD - 0.1', 'PGD - 0.0313', 'PGD - 0.5', 'PGD - 0.1565']
 
 def main(argv):
     
@@ -30,17 +28,23 @@ def main(argv):
     # parse inputs 
     FLAGS = flags.FLAGS
 
-    already_exists = False
-    if not FLAGS.train and FLAGS.load_pretrained and FLAGS.save_to_log:
+
+    if FLAGS.save_to_log:
         csv_path = get_csv_path(FLAGS.model_name)
-        already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
-    print('ALREAD EXISTS: ', already_exists)
+        if FLAGS.load_pretrained: 
+            already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
+            print('ALREAD EXISTS IN RESULTS LOG: ', already_exists) 
+
+    if FLAGS.get_saliency_map:
+        if get_bn_int_from_name(FLAGS.pretrained_name)!= 1:
+            already_exists = True
 
     if len(FLAGS.channel_transfer) > 0: 
+        # run channel transfer mode for first channels only
         if get_bn_int_from_name(run_name=FLAGS.pretrained_name) != 1:
             already_exists = True
-    
-    # set root paths
+        
+    # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
         FLAGS.root_path = '/vol/bitbucket/lr4617'
         FLAGS.dataset_path = '/vol/bitbucket/lr4617/data/'
@@ -48,19 +52,21 @@ def main(argv):
         FLAGS.root_path = '/data2/users/lr4617'
         FLAGS.dataset_path = '/data2/users/lr4617/data/' 
 
-    # get device
+    # get device (for gpucluster)
     if FLAGS.device is None:
         FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
         FLAGS.device = 'cuda:0'
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
+    if FLAGS.test_noisy and (FLAGS.attacks_in[0] == 'APGD_DLR' or FLAGS.attacks_in[0] == 'APGD_CE'):
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
 
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1:
         FLAGS.model_name = 'ResNet50'        
 
-    # get BN locations from pretrained model name
+    # get BN locations from pretrained model name (for testing only)
     if FLAGS.load_pretrained:
         result_log = FLAGS.result_log.split(',')
         FLAGS.bn_locations = get_bn_int_from_name(run_name=FLAGS.pretrained_name)
@@ -78,18 +84,45 @@ def main(argv):
         index, bn_string, test_acc, adv_accs, result_log = set_test_run()
     
     if FLAGS.verbose:
-        print('Model Name: ', model_name)
-        print('Dataset: ', FLAGS.dataset)
-        print('Epsilon Budget: ', FLAGS.epsilon_in) 
-        print('BN Configuration: ', bn_locations)
-        
+        print('-----------------------------------------------------------------------------')
+        print('| Model Name:         ', model_name)
+        print('| Dataset:            ', FLAGS.dataset)
+        print('| BN Configuration:   ', bn_locations)
+        print('| Train:              ', FLAGS.train)
+        print('| Test:               ', FLAGS.test)
+        print('| Test (with noise):  ', FLAGS.test_noisy)
+        if FLAGS.test_noisy:
+           print('| Noise after BN:     ', FLAGS.noise_after_BN)             
+        print('| Adversarial Test:   ', FLAGS.adversarial_test)
+        if FLAGS.adversarial_test:
+            print('| Attack:             ', FLAGS.attacks_in[0])
+            print('| Epsilon Budget:     ', FLAGS.epsilon_in)
+        print('-----------------------------------------------------------------------------')
+    
+        already_exists = False
+    
+    if FLAGS.capacity_regularization:
+        columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                       'Training Mode', 'capacity-regularization', 'beta-lagrange',
+                       'Test Accuracy', 'Epsilon Budget']
+        if FLAGS.train:
+            if FLAGS.bn_locations != 1:
+                already_exists = True
+    else:
+        columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                       'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
+    
+
     ######################################################### OPERATIONS #########################################################
 
     where_bn = bn_locations
     
     if FLAGS.train:
         if not FLAGS.test_run:
-            index = train(model_name, where_bn)
+            if FLAGS.save_to_wandb:
+                index, run = train(model_name, where_bn)
+            else:
+                index = train(model_name, where_bn)
             result_log=[]
 
     if not already_exists:
@@ -97,10 +130,10 @@ def main(argv):
             index = FLAGS.pretrained_name
 
         if FLAGS.test:
-            if FLAGS.test_noisy:
-                if FLAGS.noise_after_BN:
-                    print('Noisy evaluation -> Noise applied after BN')
             test_acc = test(index)
+
+        if FLAGS.get_saliency_map:
+            _ = test(index, get_saliency_map=True)
 
         if FLAGS.get_features:
             if FLAGS.adversarial_test:
@@ -147,17 +180,29 @@ def main(argv):
                 bn_string = 'Yes - ' + str(where_bn.index(1) + 1) + ' of ' + str(len(where_bn))
 
             if FLAGS.train and len(result_log)<=1:
-                csv_dict = {
-                    columns_csv[0] : index,
-                    columns_csv[1] : model_name_,
-                    columns_csv[2] : FLAGS.dataset,
-                    columns_csv[3] : bn_string, 
-                    columns_csv[4] : FLAGS.mode, 
-                    columns_csv[5] : test_acc,
-                    columns_csv[6] : FLAGS.epsilon_in}
+                if FLAGS.capacity_regularization:
+                    csv_dict = {
+                        columns_csv[0] : index,
+                        columns_csv[1] : model_name_,
+                        columns_csv[2] : FLAGS.dataset,
+                        columns_csv[3] : bn_string, 
+                        columns_csv[4] : FLAGS.mode,
+                        columns_csv[5] : FLAGS.capacity_regularization,
+                        columns_csv[6] : FLAGS.beta,
+                        columns_csv[7] : test_acc,
+                        columns_csv[8] : FLAGS.epsilon_in}
+                else:
+                    csv_dict = {
+                        columns_csv[0] : index,
+                        columns_csv[1] : model_name_,
+                        columns_csv[2] : FLAGS.dataset,
+                        columns_csv[3] : bn_string, 
+                        columns_csv[4] : FLAGS.mode,
+                        columns_csv[5] : test_acc,
+                        columns_csv[6] : FLAGS.epsilon_in}
                 csv_dict.update(adv_accs)
 
-            elif len(result_log)>1:    
+            elif len(result_log)>1 and not FLAGS.capacity_regularization:    
                 csv_dict = dict()
                 for i, log in enumerate(result_log):
                     if i <=5:
@@ -165,6 +210,22 @@ def main(argv):
                 if FLAGS.test:
                     csv_dict[columns_csv[5]] = test_acc
                 csv_dict.update(adv_accs)    
+            
+            elif len(result_log)>1 and FLAGS.capacity_regularization:
+                csv_dict = dict()
+                for i, log in enumerate(result_log):
+                    if i <=7:
+                        csv_dict[columns_csv[i]] = log
+                if FLAGS.test:
+                    csv_dict[columns_csv[7]] = test_acc
+                csv_dict.update(adv_accs)  
+
+            if FLAGS.save_to_wandb: 
+                try: 
+                    results_table = wandb.Table(columns=list(csv_dict.keys()), data=list(csv_dict.values()))
+                    run.log({"results_table": results_table})
+                except Exception as e:
+                    print("Error (wandb-custom): trouble saving table to wandb")
                 
             try:
                 FLAGS.csv_path = get_csv_path(model_name)             

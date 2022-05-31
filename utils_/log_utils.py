@@ -3,10 +3,11 @@ import csv
 from absl import flags
 from absl import app
 
+FLAGS = flags.FLAGS
+
 def get_csv_path(model_name):
 
-    FLAGS = flags.FLAGS
-
+    ### DEFINE DIRECTORIES ###
     if FLAGS.use_pop_stats:
         eval_mode_str = 'eval'
     else:
@@ -17,13 +18,21 @@ def get_csv_path(model_name):
     else:
         root_dir = './results/'
 
-    csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
-                    + FLAGS.attacks_in[0] + '/' 
-    
-    if FLAGS.relative_accuracy:
-        acc_mode = 'relative'
+    if FLAGS.capacity_regularization:
+        csv_path_dir = root_dir + model_name + '/' +  'capacity_regularization/' 
+        if not os.path.isdir(csv_path_dir):
+            os.mkdir(csv_path_dir)
+        
+        csv_path_dir += eval_mode_str + '/' 
+        if not os.path.isdir(csv_path_dir):
+            os.mkdir(csv_path_dir)
+
+        csv_path_dir += FLAGS.attacks_in[0] + '/'  
+        if not os.path.isdir(csv_path_dir):
+            os.mkdir(csv_path_dir)
     else:
-        acc_mode = ''
+        csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
+                       + FLAGS.attacks_in[0] + '/' 
 
     if FLAGS.test_noisy:
         if not os.path.isdir(csv_path_dir + 'noisy_test/'):
@@ -36,7 +45,13 @@ def get_csv_path(model_name):
         csv_path_dir = csv_path_dir + 'channel_transfer/'
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + FLAGS.channel_transfer +  '.csv'
-                
+    
+    ### DEFINE FILE NAME ###
+    if FLAGS.relative_accuracy:
+        acc_mode = 'relative'
+    else:
+        acc_mode = ''
+
     if len(os.listdir(csv_path_dir)) == 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '.csv'

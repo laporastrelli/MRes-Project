@@ -197,6 +197,8 @@ def get_bn_layer_idx(model, model_name):
         for ii, layer in enumerate(features):
             if isinstance(layer, torch.nn.modules.batchnorm.BatchNorm2d):
                 bn_idx.append(ii)
-                num_channels.append(model.weight.size(0))
+                num_channels.append(layer.weight.size(0))
 
     return bn_idx
+
+

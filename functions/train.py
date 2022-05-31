@@ -59,19 +59,27 @@ def train(model_name, where_bn):
     net = get_model.get_model(FLAGS.model_name, FLAGS.where_bn)
 
     # train model
-    net = train_utils.train(train_loader, 
-                            test_loader, 
-                            net.to(device), 
-                            FLAGS.device, 
-                            FLAGS.model_name, 
-                            batch_norm, 
-                            writer, 
-                            run_name)
-    
+    return_s = train_utils.train(train_loader, 
+                                test_loader, 
+                                net.to(device), 
+                                FLAGS.device, 
+                                FLAGS.model_name, 
+                                batch_norm, 
+                                writer, 
+                                run_name)
+        
+    if FLAGS.save_to_wandb:
+        net, run = return_s
+    else:
+        net = return_s
+
     # save model
     if not os.path.isdir(FLAGS.root_path + '/models/' + FLAGS.model_name):
         os.mkdir(FLAGS.root_path + '/models/' + FLAGS.model_name)
 
     torch.save(net.state_dict(), PATH_to_model)
 
-    return run_name
+    if FLAGS.save_to_wandb:
+        return run_name, run
+    else:
+        return run_name

@@ -1,0 +1,68 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.17
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.8.10
+    start_time: 1654023786
+    t:
+      1:
+      - 1
+      - 41
+      - 55
+      2:
+      - 1
+      - 41
+      - 55
+      3:
+      - 13
+      4: 3.8.10
+      5: 0.12.17
+      8:
+      - 5
+batch_size:
+  desc: null
+  value: 128
+beta:
+  desc: null
+  value: 0.1
+bn_config:
+  desc: null
+  value: Yes - 3 of 5
+capacity_regularization:
+  desc: null
+  value: true
+dataset:
+  desc: null
+  value: CIFAR10
+epochs:
+  desc: null
+  value: 65
+gradient_clipping:
+  desc: null
+  value: false
+learning_rate:
+  desc: null
+  value: 0.01
+learning_rate_scheduler:
+  desc: null
+  value: torch.optim.lr_scheduler.ReduceLROnPlateau
+momentum:
+  desc: null
+  value: 0.9
+optimizer:
+  desc: null
+  value: torch.optim.sgd.SGD
+regularization_mode:
+  desc: null
+  value: capacity
+run_name:
+  desc: null
+  value: VGG19_2_31_05_2022_20_02_58
+weight_decay:
+  desc: null
+  value: 0.0005
