@@ -18,7 +18,6 @@ from utils_.miscellaneous import get_epsilon_budget, get_bn_int_from_name, get_b
 from utils_.set_test_run import set_test_run
 from utils_.log_utils import get_csv_path, check_log
 
-
 def main(argv):
     
     del argv
@@ -27,23 +26,13 @@ def main(argv):
 
     # parse inputs 
     FLAGS = flags.FLAGS
+    
+    print(FLAGS.result_log)
 
+    already_exists = False
 
-    if FLAGS.save_to_log:
-        csv_path = get_csv_path(FLAGS.model_name)
-        if FLAGS.load_pretrained: 
-            already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
-            print('ALREAD EXISTS IN RESULTS LOG: ', already_exists) 
+    print(FLAGS.device)
 
-    if FLAGS.get_saliency_map:
-        if get_bn_int_from_name(FLAGS.pretrained_name)!= 1:
-            already_exists = True
-
-    if len(FLAGS.channel_transfer) > 0: 
-        # run channel transfer mode for first channels only
-        if get_bn_int_from_name(run_name=FLAGS.pretrained_name) != 1:
-            already_exists = True
-        
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
         FLAGS.root_path = '/vol/bitbucket/lr4617'
@@ -59,20 +48,17 @@ def main(argv):
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
-    if FLAGS.test_noisy and (FLAGS.attacks_in[0] == 'APGD_DLR' or FLAGS.attacks_in[0] == 'APGD_CE'):
-        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
-
+    if FLAGS.test_noisy: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    if FLAGS.adversarial_test and FLAGS.model_name.find('ResNet')!= -1: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    
     # model name logistics
-    if FLAGS.model_name.find('ResNet50_v') != -1:
-        FLAGS.model_name = 'ResNet50'        
+    if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
 
     # get BN locations from pretrained model name (for testing only)
     if FLAGS.load_pretrained:
-        result_log = FLAGS.result_log.split(',')
+        if FLAGS.result_log.find(',') != -1: result_log = FLAGS.result_log.split(',')
+        elif FLAGS.result_log.find(';') != -1: result_log = FLAGS.result_log.split(';')
         FLAGS.bn_locations = get_bn_int_from_name(run_name=FLAGS.pretrained_name)
-        if FLAGS.verbose:
-            print('Run name: ', FLAGS.pretrained_name)
-            print('BN integer:', FLAGS.bn_locations)
     
     # get model name, based on it determine one-hot encoded BN locations 
     model_name = FLAGS.model_name
@@ -80,9 +66,32 @@ def main(argv):
     FLAGS.load_pretrained = set_load_pretrained(FLAGS.train, FLAGS.test_run)
 
     # define test run params
-    if FLAGS.test_run:
-        index, bn_string, test_acc, adv_accs, result_log = set_test_run()
+    if FLAGS.test_run: index, bn_string, test_acc, adv_accs, result_log = set_test_run()
     
+    # dict selection based on mode
+    if FLAGS.capacity_regularization:
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:2]
+        if FLAGS.save_to_log:
+            columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                           'Training Mode', 'beta-lagrange', 'Test Accuracy', 'Epsilon Budget']
+    else:
+        if FLAGS.save_to_log:
+            columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                           'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
+
+    # carry out channel transfer only for full-BN configs
+    if FLAGS.channel_transfer:
+        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+            already_exists = True
+
+    # save to results log if file not already saved
+    if FLAGS.save_to_log:
+        csv_path = get_csv_path(FLAGS.model_name)
+        if FLAGS.load_pretrained: 
+            already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
+            print('ALREAD EXISTS IN RESULTS LOG: ', already_exists)
+
+    # display model info
     if FLAGS.verbose:
         print('-----------------------------------------------------------------------------')
         print('| Model Name:         ', model_name)
@@ -98,20 +107,7 @@ def main(argv):
             print('| Attack:             ', FLAGS.attacks_in[0])
             print('| Epsilon Budget:     ', FLAGS.epsilon_in)
         print('-----------------------------------------------------------------------------')
-    
-        already_exists = False
-    
-    if FLAGS.capacity_regularization:
-        columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-                       'Training Mode', 'capacity-regularization', 'beta-lagrange',
-                       'Test Accuracy', 'Epsilon Budget']
-        if FLAGS.train:
-            if FLAGS.bn_locations != 1:
-                already_exists = True
-    else:
-        columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-                       'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
-    
+        print('RUN: ', not already_exists)
 
     ######################################################### OPERATIONS #########################################################
 
@@ -126,14 +122,18 @@ def main(argv):
             result_log=[]
 
     if not already_exists:
+        
         if FLAGS.load_pretrained:
             index = FLAGS.pretrained_name
 
         if FLAGS.test:
-            test_acc = test(index)
+            test_acc = test(index, standard=True)
 
         if FLAGS.get_saliency_map:
             _ = test(index, get_saliency_map=True)
+        
+        if FLAGS.channel_transfer:
+            _ = test(index, channel_transfer=True) 
 
         if FLAGS.get_features:
             if FLAGS.adversarial_test:
@@ -151,7 +151,7 @@ def main(argv):
             # setting adversarial_test back to False
             FLAGS.adversarial_test = False
 
-        if FLAGS.adversarial_test:
+        if FLAGS.adversarial_test or FLAGS.capacity_calculation:
             adv_accs = dict()
             for attack in FLAGS.attacks_in:
                 FLAGS.attack = attack
@@ -159,13 +159,17 @@ def main(argv):
                     for eps in FLAGS.epsilon_in:
                         FLAGS.epsilon = float(eps)
                         dict_name = attack + '-' + str(FLAGS.epsilon)
-                        adv_accs[dict_name] = test(index, adversarial=True)
+                        if FLAGS.capacity_calculation:
+                            _ =  test(index, capacity_calculation=True)
+                        else:
+                            adv_accs[dict_name] = test(index, adversarial=True)
                         
-                if attack in ['FAB', 'APGD_CE', 'APGD_DLR', 'Square', '-PGD']:
-                    for eps in FLAGS.epsilon_in:
-                        FLAGS.epsilon = float(eps)
-                        dict_name = attack + '-' + str(FLAGS.epsilon)
-                        adv_accs[dict_name] = get_FAB_acc(index, attack)
+                elif attack in ['FAB', 'APGD_CE', 'APGD_DLR', 'Square', '-PGD']:
+                    if FLAGS.adversarial_test:
+                        for eps in FLAGS.epsilon_in:
+                            FLAGS.epsilon = float(eps)
+                            dict_name = attack + '-' + str(FLAGS.epsilon)
+                            adv_accs[dict_name] = get_FAB_acc(index, attack)
 
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name
@@ -187,10 +191,9 @@ def main(argv):
                         columns_csv[2] : FLAGS.dataset,
                         columns_csv[3] : bn_string, 
                         columns_csv[4] : FLAGS.mode,
-                        columns_csv[5] : FLAGS.capacity_regularization,
-                        columns_csv[6] : FLAGS.beta,
-                        columns_csv[7] : test_acc,
-                        columns_csv[8] : FLAGS.epsilon_in}
+                        columns_csv[5] : FLAGS.beta,
+                        columns_csv[6] : test_acc,
+                        columns_csv[7] : FLAGS.epsilon_in}
                 else:
                     csv_dict = {
                         columns_csv[0] : index,
@@ -214,10 +217,10 @@ def main(argv):
             elif len(result_log)>1 and FLAGS.capacity_regularization:
                 csv_dict = dict()
                 for i, log in enumerate(result_log):
-                    if i <=7:
+                    if i <=6:
                         csv_dict[columns_csv[i]] = log
                 if FLAGS.test:
-                    csv_dict[columns_csv[7]] = test_acc
+                    csv_dict[columns_csv[6]] = test_acc
                 csv_dict.update(adv_accs)  
 
             if FLAGS.save_to_wandb: 
@@ -264,4 +267,3 @@ def main(argv):
 
 if __name__ == '__main__':
     app.run(main)
-

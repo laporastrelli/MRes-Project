@@ -51,7 +51,7 @@ def get_model(model_name, where_bn):
             net = noisy_VGG_train.noisy_VGG_train(net, FLAGS.train_noise_variance, FLAGS.device)
         
         if FLAGS.capacity_regularization:
-            print('Training with capacity regularization ...')
+            print('Training/Testing with capacity regularization ...')
             net = proxy_VGG.proxy_VGG(net, 
                             eval_mode=FLAGS.use_pop_stats,
                             device=FLAGS.device,

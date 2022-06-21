@@ -40,7 +40,8 @@ class noisy_VGG(nn.Module):
                  mode='', 
                  verbose=False, 
                  scaled_noise=False, 
-                 scaled_noise_norm=False):
+                 scaled_noise_norm=False,
+                 scaled_noise_total=False):
 
         super(noisy_VGG, self).__init__()
 
@@ -56,6 +57,8 @@ class noisy_VGG(nn.Module):
         self.verbose = verbose
         self.scaled_noise = scaled_noise
         self.scaled_noise_norm = scaled_noise_norm
+        self.scaled_noise_total = scaled_noise_total
+        self.noise_out = {}
         self.init_capacity = {}
         self.pgd_steps = 0
         self.init_var = 0
@@ -74,7 +77,7 @@ class noisy_VGG(nn.Module):
             self.classifier = net.classifier
         ###########################################
 
-    def forward(self, x):
+    def forward(self, x, total_capacity=0, noise_in=0):
         if self.run_name.find('no_bn') != -1:
             for _, model in enumerate(self.features):
                 if isinstance(model, torch.nn.modules.conv.Conv2d):
@@ -94,7 +97,8 @@ class noisy_VGG(nn.Module):
             bn_count = 0
             for ii, model in enumerate(self.features):
                 if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                    assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                    assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"        
+                    
                     if self.noise_capacity_constraint:
                         if self.mode == 'standard':
                             self.capacity_ = 3.32*torch.ones(x.shape[1], dtype=torch.float).to(self.device)
@@ -115,14 +119,21 @@ class noisy_VGG(nn.Module):
                                 self.capacity['BN_' + str(bn_count)] = (torch.square(x - model.running_mean[None, :, None, None])) \
                                                                         /(2*torch.sqrt(noise[None, :, None, None] \
                                                                         + model.running_var[None, :, None, None])).detach()
-                                self.activations['BN_' + str(bn_count)] = x
+                                self.activations['BN_' + str(bn_count)] = x 
+                    elif noise_in != 0:
+                        curr_key = 'BN_' + str(bn_count)
+                        if curr_key in list(noise_in.keys()):
+                            noise = noise_in[curr_key]
+                        else:
+                            noise = torch.zeros_like(x)
                     else:
+                        capacity = (x.var([0,2,3], unbiased=False)*model.weight**2)/(model.running_var*self.noise_variance) 
+                        if self.verbose:
+                            self.capacity['BN_' + str(bn_count)] = capacity
                         if self.scaled_noise or self.scaled_noise_norm:
-                            capacity = (x.var([0,2,3], unbiased=False)*model.weight**2)/(model.running_var) 
                             if self.pgd_steps == 0:
                                 self.init_capacity['BN_' + str(bn_count)] = capacity 
                                 noise = torch.zeros_like(x)
-                                #noise = torch.normal(0, float(self.noise_variance), size=x.size())
                             else:
                                 capacity_diff = capacity - self.init_capacity['BN_' + str(bn_count)]
                                 if self.scaled_noise_norm:
@@ -135,8 +146,23 @@ class noisy_VGG(nn.Module):
                                         noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
                                 else:
                                     noise = torch.zeros_like(x)
+                        elif total_capacity!=0 and self.scaled_noise_total:
+                            if self.pgd_steps == 0:
+                                self.init_capacity['BN_' + str(bn_count)] = capacity 
+                                noise = torch.zeros_like(x)
+                            else:
+                                capacity_diff = capacity - self.init_capacity['BN_' + str(bn_count)]
+                                temp = torch.nn.functional.softmax(capacity_diff)
+                                scaled_total_capacity = temp*(torch.sum(total_capacity['BN_' + str(bn_count)].to(self.device))\
+                                                        * torch.ones_like(temp))
+                                noise_variance_d = ((x.var([0,2,3], unbiased=False)*(model.weight**2)))/(scaled_total_capacity*model.running_var)
+                                noise = torch.zeros_like(x)
+                                for d in range(x.size(1)):
+                                    noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
+                                self.noise_out['BN_' + str(bn_count)] = noise
                         else:   
                             noise = torch.normal(0, float(self.noise_variance), size=x.size())
+    
                     if not FLAGS.noise_after_BN:
                         if self.noise_capacity_constraint:
                             running_var = model.state_dict()['running_var']
@@ -144,7 +170,9 @@ class noisy_VGG(nn.Module):
                             running_var.copy_(updated_running_var)
                         else:
                             x = x + noise[None, :, None, None].to(self.device)
+                    
                     bn_count += 1
+
                 x = model(x)
 
                 if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d) and FLAGS.noise_after_BN:
@@ -161,9 +189,22 @@ class noisy_VGG(nn.Module):
     
     def get_activations(self):
         return self.activations
+    
+    def get_noise(self):
+        return self.noise_out
 
     def set_PGD_steps(self, steps):
         self.pgd_steps = steps
     
     def set_verbose(self, verbose):
         self.verbose = verbose
+    
+    def set_noise_injection_mode(self, mode):
+        if mode == 'scaled_norm':
+            self.scaled_noise_norm = True
+            self.scaled_noise_total =  False
+        elif mode == 'scaled_total': 
+            self.scaled_noise_norm = False
+            self.scaled_noise_total =  True
+
+

@@ -28,6 +28,4 @@ def set_test_run():
     result_log = [index, FLAGS.model_name, FLAGS.dataset, bn_string, FLAGS.mode, test_acc]
     FLAGS.csv_path = './results/test.csv'
 
-    # print(index, bn_string, test_acc, adv_accs, result_log)
-
     return index, bn_string, test_acc, adv_accs, result_log

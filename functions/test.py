@@ -26,10 +26,13 @@ from absl import flags
 from functions.get_entropy import get_layer_entropy
 
 
-def test(run_name, standard=True, adversarial=False, get_features=False, get_saliency_map=False):
-
-    if get_features or adversarial or get_saliency_map:
-        standard = False
+def test(run_name,
+         standard=False, 
+         adversarial=False, 
+         get_features=False, 
+         get_saliency_map=False, 
+         capacity_calculation=False, 
+         channel_transfer=False):
 
     FLAGS = flags.FLAGS
 
@@ -56,17 +59,17 @@ def test(run_name, standard=True, adversarial=False, get_features=False, get_sal
                                    get_logits=FLAGS.get_logits)
         outputs.append(test_acc)
     
-    if get_saliency_map:
+    # get saliency map of largest logit with respect to a given layer activation
+    elif get_saliency_map:
         test_utils.saliency_map(net, 
                                 PATH_to_model, 
                                 test_loader, 
                                 device, 
                                 run_name=run_name,
-                                eval_mode=FLAGS.use_pop_stats,
-                                adversarial=FLAGS.adversarial_test)
+                                eval_mode=FLAGS.use_pop_stats)
     
     # get features of specific layers in the model
-    if get_features:
+    elif get_features:
         layer_outputs = test_utils.get_layer_output(net, 
                                                     PATH_to_model, 
                                                     test_loader, 
@@ -87,7 +90,7 @@ def test(run_name, standard=True, adversarial=False, get_features=False, get_sal
         adversarial = False
 
     # test model (adversarial)
-    if adversarial:
+    elif adversarial:
         print('Adversarial attack used: ', FLAGS.attack)
         print('Epsilon Budget: ', FLAGS.epsilon)
 
@@ -112,13 +115,44 @@ def test(run_name, standard=True, adversarial=False, get_features=False, get_sal
                                                    random_resizing=FLAGS.random_resizing, 
                                                    scaled_noise=FLAGS.scaled_noise, 
                                                    scaled_noise_norm=FLAGS.scaled_noise_norm, 
+                                                   scaled_noise_total = FLAGS.scaled_noise_total,
                                                    get_similarity=FLAGS.get_similarity,
                                                    relative_accuracy=FLAGS.relative_accuracy,
                                                    get_max_indexes=FLAGS.get_max_indexes, 
                                                    channel_transfer=FLAGS.channel_transfer, 
-                                                   n_channels=FLAGS.n_channels)
+                                                   n_channels=FLAGS.n_channels_transfer,
+                                                   transfer_mode=FLAGS.transfer_mode)
         
         outputs.append(adv_test_acc)
+    
+    # calculate capacity mode
+    elif capacity_calculation:
+        _ = test_utils.calculate_capacity(net, 
+                                         PATH_to_model,
+                                         run_name, 
+                                         test_loader, 
+                                         device, 
+                                         attack=FLAGS.attack, 
+                                         epsilon=FLAGS.epsilon,
+                                         num_iter=FLAGS.PGD_iterations,
+                                         use_pop_stats=FLAGS.use_pop_stats, 
+                                         capacity_regularization=FLAGS.capacity_regularization,
+                                         beta=FLAGS.beta)
+
+    # channel transfer mode
+    elif channel_transfer:
+        _ = test_utils.channel_transfer(net, 
+                                        PATH_to_model,
+                                        run_name, 
+                                        test_loader, 
+                                        device,  
+                                        epsilon_list=FLAGS.epsilon_in,
+                                        num_iter=FLAGS.PGD_iterations,
+                                        attack=FLAGS.attack,
+                                        channel_transfer=FLAGS.channel_transfer,
+                                        transfer_mode=FLAGS.transfer_mode,
+                                        layer_to_test=FLAGS.layer_to_test,
+                                        use_pop_stats=FLAGS.use_pop_stats)
 
     if len(outputs) == 1:
         return outputs[0]

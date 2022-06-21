@@ -1,3 +1,4 @@
+from statistics import mode
 import string
 from tkinter.tix import Tree
 from turtle import clear
@@ -35,7 +36,7 @@ def pgd_linf(model, X, y,  epsilon, max_, min_, alpha, num_iter, noise_injection
     deltas.append(delta.detach())
     return deltas
 
-def pgd_linf_loss_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_loss_analysis(model, X, y, epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
     delta = torch.zeros_like(X, requires_grad=True)
@@ -78,7 +79,7 @@ def pgd_linf_loss_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     deltas.append(delta.detach())
     return deltas, step_loss
 
-def pgd_linf_grad_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_grad_analysis(model, X, y, epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
     delta = torch.zeros_like(X, requires_grad=True)
@@ -121,7 +122,7 @@ def pgd_linf_grad_analysis(model, X, y,  epsilon, max_, min_, alpha, num_iter):
     deltas.append(delta.detach())
     return deltas, step_norm
 
-def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
+def pgd_linf_capacity_(model, X, y, epsilon, max_, min_, alpha, num_iter):
     """ Construct FGSM adversarial examples on the examples X"""
     deltas = []
     delta = torch.zeros_like(X, requires_grad=True)
@@ -158,7 +159,7 @@ def pgd_linf_capacity_(model, X, y,  epsilon, max_, min_, alpha, num_iter):
 
     return deltas
 
-def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_key):
+def pgd_linf_capacity(model, X, y, epsilon, max_, min_, alpha, num_iter, layer_key):
     """ Construct PGD adversarial examples on the examples X"""
     if isinstance(layer_key, str):
         layer_key = [layer_key]
@@ -178,10 +179,8 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
 
         for k, key in enumerate(layer_key):
             if t == 0:
-                capacities[key] = model.get_capacity()[key].cpu().detach().numpy().tolist()
+                capacities[key] = model.get_capacity()[key]
                 activations[key] = model.get_activations()[key]
-            elif t == num_iter - 1:
-                test_variance[key] = model.get_test_variance()[key].cpu().detach().numpy().tolist()
             else:
                 to_add = []
                 to_add_act = []
@@ -196,14 +195,55 @@ def pgd_linf_capacity(model, X, y,  epsilon, max_, min_, alpha, num_iter, layer_
                         to_add.append(exists[i])
                         to_add_act.append(exists_act[i])
                     else:
-                        to_add.append(model.get_capacity()[key].cpu().detach().numpy().tolist())
+                        to_add.append(model.get_capacity()[key])
                         to_add_act.append(model.get_activations()[key])
                 capacities[key] = to_add
                 activations[key] = to_add_act
+
+            '''elif t == num_iter - 1:
+                print()'''
+                # test_variance[key] = model.get_test_variance()[key].cpu().detach().numpy().tolist()
   
     deltas.append(delta.detach())
 
     return deltas, capacities, activations
+
+def pgd_linf_total_capacity(model, X, y, epsilon, max_, min_, alpha, num_iter, layer_key, total_capacity=0):
+    """ Construct PGD adversarial examples on the examples X"""
+    if isinstance(layer_key, str):
+        layer_key = [layer_key]
+    deltas = []
+    final_capacity = dict.fromkeys(layer_key, [])
+    
+    # set noise injection to 'scaled_norm'
+    model.set_noise_injection_mode(mode='scaled_norm')
+    delta = torch.zeros_like(X, requires_grad=True)
+    model.set_verbose(verbose=True)
+    for t in range(num_iter): 
+        model.set_PGD_steps(steps=t)
+        loss = nn.CrossEntropyLoss()(model(X + delta), y)
+        loss.backward()
+        delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+        delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
+        delta.grad.zero_()
+    for _, key in enumerate(layer_key):
+        final_capacity[key] = model.get_capacity()[key].cpu().detach()
+
+
+    # set noise injection to 'scaled_total'
+    model.set_noise_injection_mode(mode='scaled_total')
+    delta = torch.zeros_like(X, requires_grad=True)
+    model.set_verbose(verbose=False)
+    for t in range(num_iter): 
+        model.set_PGD_steps(steps=t)
+        loss = nn.CrossEntropyLoss()(model(X + delta, final_capacity), y)
+        loss.backward()
+        delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+        delta.data = torch.clamp(X.data + delta.data, min=min_, max=max_) - X.data
+        delta.grad.zero_()
+
+    deltas.append(delta.detach())
+    return deltas
 
 def pgd_linf_rand(model, X, y, epsilon, alpha, num_iter, restarts):
     """ Construct PGD adversarial examples on the samples X, with random restarts"""
