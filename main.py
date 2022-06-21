@@ -59,8 +59,8 @@ def main(argv):
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
-    if FLAGS.test_noisy and (FLAGS.attacks_in[0] == 'APGD_DLR' or FLAGS.attacks_in[0] == 'APGD_CE'):
-        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    if FLAGS.test_noisy and (FLAGS.attacks_in[0] == 'PGD'):
+        FLAGS.epsilon_in = [FLAGS.epsilon_in[0]]
 
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1:
