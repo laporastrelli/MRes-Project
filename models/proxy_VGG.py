@@ -63,9 +63,9 @@ class proxy_VGG(nn.Module):
 
                 if self.verbose:
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                    self.capacity['BN_' + str(bn_count)] = (var_test * model.weight**2)/model.running_var
+                    self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
                     self.activations['BN_' + str(bn_count)] = x 
-                    self.bn_parameters['BN_' + str(bn_count)] = [model.weight, model.running_var]
+                    self.bn_parameters['BN_' + str(bn_count)] = model.weight
                     self.test_variance['BN_' + str(bn_count)] = var_test
                 
                 if len(ch_activation)> 0:
@@ -99,15 +99,21 @@ class proxy_VGG(nn.Module):
         out = self.classifier(x)
 
         return out
+    
+    def get_bn_parameters(self):
+        bn_count = 0
+        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
+                bn_count += 1
+        return self.bn_parameters
 
     def get_capacity(self):
         return self.capacity
     
     def get_activations(self):
         return self.activations
-    
-    def get_bn_parameters(self):
-        return self.bn_parameters
     
     def get_test_variance(self):
         return self.test_variance

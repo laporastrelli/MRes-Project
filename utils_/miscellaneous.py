@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import os 
 import math as mt
+import numpy as np
 
 from zmq import device
 
@@ -174,7 +175,7 @@ def CKA(X_clean, X_adv, device):
 
 def HSIC(gram1, gram2, m, device):
     return (center(gram1, device).view((gram1.size(0), -1))\
-           *center(gram2, device).view((gram2.size(0), -1))).sum(axis=1)/((m-1)^2)
+           *center(gram2, device).view((gram2.size(0), -1))).sum(axis=1)/((m-1)**2)
 
 def center(matrix, device):
     centering = torch.eye(matrix.size(1)) - (1/matrix.size(1))*torch.ones(matrix.size(1), matrix.size(1))
@@ -201,4 +202,30 @@ def get_bn_layer_idx(model, model_name):
 
     return bn_idx
 
+def nonzero_idx(tensor,axis,invalid_item =-1):
+    mask = tensor!=0
+    indices = np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_item)
+    return indices
 
+def entropy(iid_sample, which='K-L'):
+    '''Kozachenko-Leonenko estimator for entropy
+       based on a nearest-neighbour estimate. In 
+       this function only 1-d vectors are considered.'''
+    if iid_sample.size(0) == 1:
+        iid_sample = iid_sample.reshape(iid_sample.size(1), 1)
+    if which == 'K-L':
+        repeated_sample = iid_sample.repeat(iid_sample.size(0),1)
+        to_substract = iid_sample.reshape([iid_sample.size(0), -1]).repeat(1, iid_sample.size(0))
+        diff = torch.sqrt(torch.pow(repeated_sample - to_substract, 2))
+        sorted_distances, _ = torch.sort(diff, dim=1)
+        positive_idxs = nonzero_idx(sorted_distances.numpy(), axis=1)
+        min_distances = sorted_distances[:, positive_idxs]
+        print('MIN: ', torch.min(min_distances))
+        print('SUM: ', min_distances.mean())
+        print('Internal: ', torch.sum(iid_sample.size(0)*(torch.tensor(mt.pi)**(2))*min_distances))
+        h = (1/iid_sample.size(0))*torch.sum(torch.log(iid_sample.size(0)*(torch.tensor(mt.pi)**(2))*min_distances) + 0.57721566490153286060)
+        print(h)
+    elif which == 'gaussian':
+        h = 1/2 * torch.log2(2*mt.pi*torch.var(iid_sample, unbiased=True)) + 1/2
+
+    return h

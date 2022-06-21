@@ -1,3 +1,4 @@
+from sqlite3 import enable_shared_cache
 import torch.nn as nn
 import torch.optim as optim
 import torch 
@@ -9,7 +10,8 @@ from absl import flags
 from absl.flags import FLAGS
 from torch._C import _propagate_and_assign_input_shapes
 from utils_ import utils_flags
-from utils_.miscellaneous import get_bn_layer_idx
+from utils_.miscellaneous import get_bn_layer_idx, entropy
+from torch import linalg as LA
 
 
 
@@ -192,6 +194,7 @@ def train (train_loader,
 
             if FLAGS.capacity_regularization:
                 model.set_verbose(verbose=True)
+
             yp = model(X)
             loss = nn.CrossEntropyLoss()(yp,y)
 
@@ -205,22 +208,88 @@ def train (train_loader,
                             regularizer *= torch.prod(2*math.pi*(model.features[idx].weight**2))
                         num_channels += model.features[idx].weight.size(0) 
                     loss += FLAGS.beta*(((1/2*math.log2(regularizer)) + num_channels/2)/num_channels)
-                elif FLAGS.regularization_mode == 'capacity': 
+                elif FLAGS.regularization_mode == 'capacity_norm': 
                     regularizer = 1 
-                    layer_key = ['BN_0', 'BN_1']
                     bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    if run_name.find('bn')!= -1:
+                        layer_key = ['BN_' + str(i) for i in range(16)]
+                    else:
+                        layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
                     for mm, idx in enumerate(bn_idx):
                         if i == 0 and epoch_num == 0:
                             regularizer =  1
                         else:
                             test_var = model.get_test_variance()[layer_key[mm]].cpu().detach().numpy().tolist()
                             model.set_verbose(verbose=False)
-                            for ll in range(len(test_var)):
-                                regularizer *=  1 + ((test_var[ll] * model.features[idx].weight[ll].cpu().detach().numpy()**2) / \
-                                                (model.features[idx].running_var[ll].cpu().detach().numpy()))
-                                
-                               
-                    loss += FLAGS.beta*(1/2*math.log2(regularizer))
+                            capacity_arg = 1 + ((test_var * model.features[idx].weight.cpu().detach().numpy()**2)/ \
+                                                (model.features[idx].running_var.cpu().detach()))
+                            regularizer = torch.prod((capacity_arg -  capacity_arg.mean() + 1.5))                    
+                    temp_ = FLAGS.beta*(1/2*math.log(regularizer))
+                    # temp_ = FLAGS.beta*(1/2*(regularizer-1))
+                    loss += temp_
+                elif FLAGS.regularization_mode == 'lambda_entropy':
+                    regularizer = 0
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    if i == 0 and epoch_num == 0:
+                        regularizer = 0
+                    elif epoch_num > 0:
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                        for mm, idx in enumerate(bn_idx):
+                            regularizer += entropy(model.features[idx].weight.cpu().detach(), which='K-L')
+                    temp_ = FLAGS.beta*(regularizer/len(bn_idx))
+                    loss += temp_
+                elif FLAGS.regularization_mode == 'lambda_entropy_gaussian':
+                    regularizer = 0
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    if i == 0 and epoch_num == 0:
+                        regularizer = 0
+                    else:
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                        for mm, idx in enumerate(bn_idx):
+                            regularizer += entropy(model.features[idx].weight.cpu().detach(), which='gaussian')
+                    temp_ = FLAGS.beta*(regularizer/len(bn_idx))
+                    loss += temp_
+                elif FLAGS.regularization_mode == 'infinity':
+                    regularizer = 0
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+
+                    if run_name.find('bn')!= -1:
+                        layer_key = ['BN_' + str(i) for i in range(16)]
+                    else:
+                        layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+
+                    if i == 0 and epoch_num == 0:
+                        regularizer = 0
+                    else:
+                        for _, idx in enumerate(bn_idx):
+                            weights = model.features[idx].weight.cpu().detach()
+                            regularizer += torch.norm(weights - weights.mean(), float('inf'))
+                            # regularizer += torch.norm(weights, float('inf'))
+                    temp_ = FLAGS.beta*(regularizer)
+                    loss += temp_
+                elif FLAGS.regularization_mode == 'euclidean':
+                    regularizer = 0
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+
+                    if run_name.find('bn')!= -1:
+                        layer_key = ['BN_' + str(i) for i in range(16)]
+                    else:
+                        layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+
+                    if i == 0 and epoch_num == 0:
+                        regularizer = 0
+                    else:
+                        for _, idx in enumerate(bn_idx):
+                            weights = model.features[idx].weight.cpu().detach()
+                            regularizer += LA.norm(weights - weights.mean(), 2)
+                    temp_ = FLAGS.beta*(regularizer)
+                    loss += temp_
 
             opt.zero_grad()
             loss.backward()
@@ -236,7 +305,7 @@ def train (train_loader,
             total += y.size(0)
             total_err += (yp.max(dim=1)[1] != y).sum().item()
             total_loss += loss.item()
-            total_regularizer += FLAGS.beta*(1/2*math.log2(regularizer))
+            total_regularizer += temp_
 
         print(*("{:.6f}".format(i) for i in (int(epoch_num), total_err/len(train_loader.dataset), total_loss/len(train_loader.dataset))), sep="\t")
         
@@ -273,24 +342,89 @@ def train (train_loader,
                                 regularizer *= torch.prod(2*math.pi*(model.features[idx].weight**2))
                             num_channels += model.features[idx].weight.size(0) 
                         loss += FLAGS.beta*(((1/2*math.log2(regularizer)) + num_channels/2)/num_channels)
-                    elif FLAGS.regularization_mode == 'capacity': 
+                    elif FLAGS.regularization_mode == 'capacity_norm': 
                         regularizer = 1 
-                        layer_key = ['BN_0', 'BN_1']
                         bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
                         for mm, idx in enumerate(bn_idx):
                             if i == 0 and epoch_num == 0:
                                 regularizer =  1
                             else:
                                 test_var = model.get_test_variance()[layer_key[mm]].cpu().detach().numpy().tolist()
                                 model.set_verbose(verbose=False)
-                                for ll in range(len(test_var)):
-                                    regularizer *=  1 + ((test_var[ll] * model.features[idx].weight[ll].cpu().detach().numpy()**2) / \
-                                                    (model.features[idx].running_var[ll].cpu().detach().numpy()))
-        
-                        loss += FLAGS.beta*(1/2*math.log2(regularizer))
+                                capacity_arg = 1 + ((test_var * model.features[idx].weight.cpu().detach().numpy()**2)/ \
+                                                    (model.features[idx].running_var.cpu().detach()))
+                                regularizer = torch.prod((capacity_arg -  capacity_arg.mean() + 1.5))                    
+                        temp = FLAGS.beta*(1/2*math.log(regularizer))
+                        loss += temp      
+                    elif FLAGS.regularization_mode == 'lambda_entropy':
+                        regularizer = 0
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = ['BN_0', 'BN_1']
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        for mm, idx in enumerate(bn_idx):
+                            regularizer += entropy(model.features[idx].weight.cpu().detach(), which='K-L')
+                        temp = FLAGS.beta*(regularizer/len(bn_idx))
+                        loss += temp
+                    elif FLAGS.regularization_mode == 'lambda_entropy_gaussian':
+                        regularizer = 0
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        if i == 0 and epoch_num == 0:
+                            regularizer = 0
+                        else:
+                            if run_name.find('bn')!= -1:
+                                layer_key = ['BN_' + str(i) for i in range(16)]
+                            else:
+                                layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                            for mm, idx in enumerate(bn_idx):
+                                regularizer += entropy(model.features[idx].weight.cpu().detach(), which='gaussian')
+                        temp = FLAGS.beta*(regularizer/len(bn_idx))
+                        loss += temp
+                    elif FLAGS.regularization_mode == 'infinity':
+                        regularizer = 0
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                            layer_key = ['BN_0', 'BN_1']
+                            bn_idx = bn_idx[0:len(layer_key)]
+                        else:
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+
+                        if i == 0 and epoch_num == 0:
+                            regularizer = 0
+                        else:
+                            for _, idx in enumerate(bn_idx):
+                                weights = model.features[idx].weight.cpu().detach()
+                                regularizer += torch.norm(weights - weights.mean(), float('inf'))
+                                # regularizer += torch.norm(weights, float('inf'))
+                        temp = FLAGS.beta*(regularizer)
+                        loss += temp
+                    elif FLAGS.regularization_mode == 'euclidean':
+                        regularizer = 0
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                        else:
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+
+                        if i == 0 and epoch_num == 0:
+                            regularizer = 0
+                        else:
+                            for _, idx in enumerate(bn_idx):
+                                weights = model.features[idx].weight.cpu().detach()
+                                regularizer += LA.norm(weights - weights.mean(), 2)
+                        temp = FLAGS.beta*(regularizer)
+                        loss += temp
 
                 valid_loss += loss.item()
-                valid_regularizer += regularizer
+                valid_regularizer += temp
 
                 total += y.size(0)
                 correct += (predicted == y).sum().item()

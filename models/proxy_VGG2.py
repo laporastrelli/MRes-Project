@@ -76,7 +76,6 @@ class proxy_VGG2(nn.Module):
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                     self.capacity['BN_' + str(bn_count)] = (var_test * model.weight**2)/model.running_var
                     self.activations['BN_' + str(bn_count)] = x 
-                    self.bn_parameters['BN_' + str(bn_count)] = [model.weight, model.running_var]
                     self.test_variance['BN_' + str(bn_count)] = var_test
                 
                 if len(ch_activation)> 0:
@@ -89,7 +88,6 @@ class proxy_VGG2(nn.Module):
                         else:
                             x[:, ch, :, :] = activation
                 
-
                 bn_count += 1
 
             x = model(x)

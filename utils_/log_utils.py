@@ -7,38 +7,36 @@ FLAGS = flags.FLAGS
 
 def get_csv_path(model_name):
 
-    ### DEFINE DIRECTORIES ###
-    if FLAGS.use_pop_stats:
-        eval_mode_str = 'eval'
-    else:
-        eval_mode_str = 'no_eval'
-    
+    ##################### DEFINE DIRECTORIES #####################
+    # root directory based on server
     if str(os.getcwd()).find('bitbucket') != -1:
         root_dir = './gpucluster/SVHN/'
     else:
         root_dir = './results/'
 
-    if FLAGS.capacity_regularization:
-        csv_path_dir = root_dir + model_name + '/' +  'capacity_regularization/' 
-        if not os.path.isdir(csv_path_dir):
-            os.mkdir(csv_path_dir)
-        
-        csv_path_dir += eval_mode_str + '/' 
-        if not os.path.isdir(csv_path_dir):
-            os.mkdir(csv_path_dir)
-
-        csv_path_dir += FLAGS.attacks_in[0] + '/'  
-        if not os.path.isdir(csv_path_dir):
-            os.mkdir(csv_path_dir)
+    # eval or no-eval mode
+    if FLAGS.use_pop_stats:
+        eval_mode_str = 'eval'
     else:
-        csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
-                       + FLAGS.attacks_in[0] + '/' 
-
+        eval_mode_str = 'no_eval'
+    
+    # directory before analysis
+    csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
+                    + FLAGS.attacks_in[0] + '/' 
+    
+    # nosiy test
     if FLAGS.test_noisy:
         if not os.path.isdir(csv_path_dir + 'noisy_test/'):
             os.mkdir(csv_path_dir + 'noisy_test/')
         csv_path_dir = csv_path_dir + 'noisy_test/'
     
+    # capacity regularization  
+    if FLAGS.capacity_regularization:
+        if not os.path.isdir(csv_path_dir + 'capacity_regularization/'):
+            os.mkdir(csv_path_dir + 'capacity_regularization/')
+        csv_path_dir = csv_path_dir + 'capacity_regularization/'
+    
+    # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
         if not os.path.isdir(csv_path_dir + 'channel_transfer/'):
             os.mkdir(csv_path_dir + 'channel_transfer/')
@@ -46,7 +44,8 @@ def get_csv_path(model_name):
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + FLAGS.channel_transfer +  '.csv'
     
-    ### DEFINE FILE NAME ###
+
+    ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
         acc_mode = 'relative'
     else:
@@ -71,21 +70,29 @@ def get_csv_path(model_name):
             where_noise += '_scaled'
         elif FLAGS.scaled_noise_norm:
             where_noise += '_scaled_norm'
+        elif FLAGS.scaled_noise_total:
+            where_noise += '_scaled_total'
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_' \
                             + noise_var_str + '_' + where_noise + '.csv' 
     
+    if FLAGS.capacity_regularization:
+        FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
+                            + 'results_' + eval_mode_str + '_' + acc_mode + '_' \
+                            + str(FLAGS.regularization_mode) + '.csv'
+
     return FLAGS.csv_path
 
 def check_log(run_name, log_file):
     already_exists = False
-    file = open(log_file)
-    csvreader = csv.reader(file)
-    for row in csvreader:
-        if len(row) > 0 and str(row[0]) == run_name:
-            print(run_name)
-            already_exists = True
-            break
+    if os.path.isfile(log_file):
+        file = open(log_file)
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            if len(row) > 0 and str(row[0]) == run_name:
+                print(run_name)
+                already_exists = True
+                break
 
     return already_exists
 
