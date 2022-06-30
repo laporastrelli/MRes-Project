@@ -273,24 +273,50 @@ def train (train_loader,
                             # regularizer += torch.norm(weights, float('inf'))
                     temp_ = FLAGS.beta*(regularizer)
                     loss += temp_
-                elif FLAGS.regularization_mode == 'euclidean':
-                    regularizer = 0
+                elif FLAGS.regularization_mode == 'euclidean_total':
+                    # regularizer = torch.tensor(0., device=device, requires_grad=True)
+                    regularizer = None
                     bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
-
                     if run_name.find('bn')!= -1:
                         layer_key = ['BN_' + str(i) for i in range(16)]
                     else:
                         layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
-
-                    if i == 0 and epoch_num == 0:
-                        regularizer = 0
+                    for _, idx in enumerate(bn_idx):
+                        weights = model.features[idx].weight
+                        if i == 0 and epoch_num == 0:
+                            regularizer = LA.norm(weights, 2)*0
+                        else:
+                            if regularizer == None:
+                                regularizer = LA.norm(weights, 2)
+                            else:
+                                regularizer = regularizer + LA.norm(weights, 2)
+                    regularizer = FLAGS.beta*(regularizer)
+                    loss += regularizer
+                elif FLAGS.regularization_mode == 'euclidean_first_layer':
+                    # regularizer = torch.tensor(0., device=device, requires_grad=True)
+                    regularizer = None
+                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                    if run_name.find('bn')!= -1:
+                        layer_key = ['BN_' + str(i) for i in range(16)]
+                        layer_key = ['BN_0']
                     else:
-                        for _, idx in enumerate(bn_idx):
-                            weights = model.features[idx].weight.cpu().detach()
-                            regularizer += LA.norm(weights - weights.mean(), 2)
-                    temp_ = FLAGS.beta*(regularizer)
-                    loss += temp_
-
+                        layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                    for _, idx in enumerate(bn_idx):
+                        weights = model.features[idx].weight
+                        if i == 0 and epoch_num == 0:
+                            regularizer = LA.norm(weights, 2)*0
+                        else:
+                            if regularizer == None:
+                                regularizer = LA.norm(weights, 2)
+                            else:
+                                regularizer = regularizer + LA.norm(weights, 2)
+                    regularizer = FLAGS.beta*(regularizer)
+                    loss += regularizer
+                elif FLAGS.regularization_mode == 'uniform_lambda':
+                    regularizer = 0
+                elif FLAGS.regularization_mode == 'wandb_only':
+                    regularizer = 0
+            
             opt.zero_grad()
             loss.backward()
 
@@ -305,7 +331,7 @@ def train (train_loader,
             total += y.size(0)
             total_err += (yp.max(dim=1)[1] != y).sum().item()
             total_loss += loss.item()
-            total_regularizer += temp_
+            total_regularizer += regularizer
 
         print(*("{:.6f}".format(i) for i in (int(epoch_num), total_err/len(train_loader.dataset), total_loss/len(train_loader.dataset))), sep="\t")
         
@@ -405,26 +431,51 @@ def train (train_loader,
                                 # regularizer += torch.norm(weights, float('inf'))
                         temp = FLAGS.beta*(regularizer)
                         loss += temp
-                    elif FLAGS.regularization_mode == 'euclidean':
-                        regularizer = 0
+                    elif FLAGS.regularization_mode == 'euclidean_total':
+                        regularizer_val = None
                         bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
-
                         if run_name.find('bn')!= -1:
                             layer_key = ['BN_' + str(i) for i in range(16)]
                         else:
                             layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
-
-                        if i == 0 and epoch_num == 0:
-                            regularizer = 0
+                        for _, idx in enumerate(bn_idx):
+                            weights = model.features[idx].weight
+                            if i == 0 and epoch_num == 0:
+                                regularizer_val = LA.norm(weights, 2)*0
+                            else:
+                                if regularizer_val == None:
+                                    regularizer_val = LA.norm(weights, 2)
+                                else:
+                                    regularizer_val = regularizer_val + LA.norm(weights, 2)
+                        regularizer_val = FLAGS.beta*(regularizer_val)
+                        loss += regularizer_val
+                    elif FLAGS.regularization_mode == 'euclidean_first_layer':
+                        # regularizer = torch.tensor(0., device=device, requires_grad=True)
+                        regularizer_val = None
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
+                            layer_key = ['BN_0']
                         else:
-                            for _, idx in enumerate(bn_idx):
-                                weights = model.features[idx].weight.cpu().detach()
-                                regularizer += LA.norm(weights - weights.mean(), 2)
-                        temp = FLAGS.beta*(regularizer)
-                        loss += temp
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                        for _, idx in enumerate(bn_idx):
+                            weights = model.features[idx].weight
+                            if i == 0 and epoch_num == 0:
+                                regularizer_val = LA.norm(weights, 2)*0
+                            else:
+                                if regularizer_val == None:
+                                    regularizer_val = LA.norm(weights, 2)
+                                else:
+                                    regularizer_val = regularizer_val + LA.norm(weights, 2)
+                        regularizer_val = FLAGS.beta*(regularizer_val)
+                        loss += regularizer_val
+                    elif FLAGS.regularization_mode == 'uniform_lambda':
+                        regularizer_val = 0
+                    elif FLAGS.regularization_mode == 'wandb_only':
+                        regularizer_val = 0
 
                 valid_loss += loss.item()
-                valid_regularizer += temp
+                valid_regularizer += regularizer_val
 
                 total += y.size(0)
                 correct += (predicted == y).sum().item()

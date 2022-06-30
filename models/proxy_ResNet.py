@@ -10,7 +10,11 @@ class proxy_ResNet(nn.Module):
                 device, 
                 noise_variance=0., 
                 verbose=False, 
-                run_name=''):
+                run_name='', 
+                IB_noise_calculation=False,
+                IB_noise_std=0,
+                layer_to_test=0,
+                saliency_map=False):
 
         super(proxy_ResNet, self).__init__()
 
@@ -26,6 +30,18 @@ class proxy_ResNet(nn.Module):
         self.BN_names = []
         self.gradients = 0
         self.eval_mode = eval_mode
+
+        # saliency map mode
+        self.saliency_map = saliency_map
+
+        # IB noise calculation mode
+        self.IB_noise_calculation = IB_noise_calculation
+        self.IB_noise_std = IB_noise_std
+        self.layer_to_test = layer_to_test
+
+        ############################
+        self.bn1 = 0
+        ############################
 
         if self.eval_mode:
             net.eval()    
@@ -104,7 +120,7 @@ class proxy_ResNet(nn.Module):
     def replace_activation(self, x, ch_activation, bn_count):
         ch, bn_idx, activation = ch_activation
         if bn_count == bn_idx: 
-            print('TRANSFERRING CHANNEL')
+            # print('TRANSFERRING CHANNEL')
             if isinstance(ch, list):
                 for idx_ in ch:
                     x[:, idx_, :, :] = torch.from_numpy(activation[idx_]).to(self.device)
@@ -113,7 +129,20 @@ class proxy_ResNet(nn.Module):
             return x
         else:
             return x
+    
+    def inject_IB_noise(self, activation, bn_count):
+        if self.layer_to_test == bn_count:
+            noise = torch.zeros_like(activation, device=self.device)
+            for dim in range(self.noise_std.size(0)):
+                noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
+                                      *torch.normal(0, 1, size=activation[:, dim, :, :].size(), device=self.device)
 
+            activation = activation + noise.to(self.device)
+            self.noise_std.retain_grad()
+            return activation
+        else:
+            return activation
+        
     def forward(self, x, ch_activation=[]):
         bn_count = 0
         # first conv layer 
@@ -126,10 +155,13 @@ class proxy_ResNet(nn.Module):
                 self.capacity['BN_' + str(bn_count)] = ((var_test * (self.net.bn1.weight**2))/self.net.bn1.running_var).cpu().detach().numpy()
                 self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
             if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
+            if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
             bn_count += 1
-            x = self.net.bn1(x)
+            self.bn1 = self.net.bn1(x)
+            if self.saliency_map:
+                self.bn1.retain_grad()
         # first activation function layer 
-        x = self.net.activation_fn(x)
+        x = self.net.activation_fn(self.bn1)
         # four consecutive layers each containing blocks made up from sublocks
         layers = [self.net.layer1, self.net.layer2, self.net.layer3, self.net.layer4]
         # unpack each of the four layers

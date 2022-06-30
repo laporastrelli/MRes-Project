@@ -12,13 +12,11 @@ from collections import namedtuple
 
 FLAGS = flags.FLAGS
 
-class proxy_VGG2(nn.Module):
-
+class proxy_VGG3(nn.Module):
     '''
-    This proxy VGG model is used for saliency map visualization.
-    For now it is built to only get gradients from the very first
-    Batch Normalization layer (i.e. bn1). It could also be used to 
-    carry out the channel transfer experiment (for vulnearibility).
+    This proxy VGG model is used for the calculation of noise
+    using the **Information Bottleneck** approach. Alternatively, 
+    it could also be used for the channel transfer experiment.
     '''
 
     def __init__(self, 
@@ -28,9 +26,11 @@ class proxy_VGG2(nn.Module):
                  noise_variance=0., 
                  verbose=False, 
                  run_name='', 
-                 saliency_map=False):
+                 IB_noise_calculation=False,
+                 IB_noise_std=0, 
+                 layer_to_test=0):
 
-        super(proxy_VGG2, self).__init__()
+        super(proxy_VGG3, self).__init__()
 
         self.noise_variance = float(noise_variance)
         self.device = device
@@ -39,20 +39,20 @@ class proxy_VGG2(nn.Module):
         self.activations = {}
         self.verbose = verbose
         self.run_name = run_name
-        self.saliency_map = saliency_map
-        
+
+        # IB noise calculation
+        self.IB_noise_calculation = IB_noise_calculation
+        self.layer_to_test = layer_to_test
+
         self.bn_parameters = {}
         self.test_variance = {}
 
         ############################
-        self.conv = net.features[0]
-        self.bn = net.features[1]
-        self.activation = net.features[2]
-        features = list(net.features[3:])
+        self.noise_std = IB_noise_std
         ############################
 
         ############################
-        self.bn1 = 0
+        features = list(net.features)
         ############################
         
         # ---- WATCH OUT w/ .eval() ---- #
@@ -68,19 +68,15 @@ class proxy_VGG2(nn.Module):
             self.classifier = net.classifier
         ###########################################
 
-    def forward(self, x, ch_activation=[], saliency_layer=''):
+    def forward(self, x, ch_activation=[]):
+
+        # set bn counter
         bn_count = 0
 
-        conv1 = self.conv(x)
-        self.bn1 = self.bn(conv1)
-        if self.saliency_map:
-            self.bn1.retain_grad()
-        x = self.activation(self.bn1)
-
+        # unpack rest of the model
         for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), \
-                       "Previous module should be Conv2d"
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
 
                 if self.verbose:
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
@@ -98,13 +94,21 @@ class proxy_VGG2(nn.Module):
                         else:
                             x[:, ch, :, :] = activation
                 
+                if self.IB_noise_calculation and self.layer_to_test==bn_count:
+                    noise = torch.zeros_like(x, device=self.device)
+                    for dim in range(self.noise_std.size(0)):
+                        noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
+                                              *torch.normal(0, 1, size=x[:, dim, :, :].size(), device=self.device)                
+                    x = x + noise.to(self.device)
+                    self.noise_std.retain_grad()
+                
                 bn_count += 1
 
             x = model(x)
 
             if self.noise_variance != float(0):
                 x = x + torch.normal(0, float(self.noise_variance), size=x.size()).to(self.device)
-        
+            
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         out = self.classifier(x)
@@ -130,3 +134,20 @@ class proxy_VGG2(nn.Module):
     def set_verbose(self, verbose):
         self.verbose = verbose
     
+    def get_bn_parameters(self):
+        bn_count = 0
+        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
+                bn_count += 1
+        return self.bn_parameters
+    
+    def get_running_variance(self):
+        bn_count = 0
+        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                self.bn_parameters['BN_' + str(bn_count)] = model.running_var
+                bn_count += 1
+        return self.bn_parameters

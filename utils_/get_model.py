@@ -55,7 +55,9 @@ def get_model(model_name, where_bn):
             net = proxy_VGG.proxy_VGG(net, 
                             eval_mode=FLAGS.use_pop_stats,
                             device=FLAGS.device,
-                            noise_variance=FLAGS.noise_variance)
+                            noise_variance=FLAGS.noise_variance, 
+                            train_mode=FLAGS.train,
+                            regularization_mode=FLAGS.regularization_mode)
 
     elif model_name == 'VGG16':
         if sum(where_bn)==0:

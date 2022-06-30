@@ -27,11 +27,7 @@ def main(argv):
     # parse inputs 
     FLAGS = flags.FLAGS
     
-    print(FLAGS.result_log)
-
     already_exists = False
-
-    print(FLAGS.device)
 
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
@@ -49,7 +45,7 @@ def main(argv):
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
     if FLAGS.test_noisy: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
-    if FLAGS.adversarial_test and FLAGS.model_name.find('ResNet')!= -1: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    if FLAGS.adversarial_test: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
     
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
@@ -80,13 +76,23 @@ def main(argv):
                            'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
 
     # carry out channel transfer only for full-BN configs
-    if FLAGS.channel_transfer:
+    if len(FLAGS.channel_transfer)>0:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+            already_exists = True
+    if FLAGS.capacity_calculation:
+        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+            already_exists = True
+    if FLAGS.frequency_analysis:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+            already_exists = True
+    if FLAGS.IB_noise_calculation:
+        if get_bn_int_from_name(FLAGS.pretrained_name) != 100: 
             already_exists = True
 
     # save to results log if file not already saved
     if FLAGS.save_to_log:
         csv_path = get_csv_path(FLAGS.model_name)
+        print('CSV PATH: ', csv_path)
         if FLAGS.load_pretrained: 
             already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
             print('ALREAD EXISTS IN RESULTS LOG: ', already_exists)
@@ -128,6 +134,12 @@ def main(argv):
 
         if FLAGS.test:
             test_acc = test(index, standard=True)
+        
+        if FLAGS.IB_noise_calculation:
+            _ = test(index, IB_noise_calculation=True)
+        
+        if FLAGS.frequency_analysis:
+            _ = test(index, frequency_analysis=True)
 
         if FLAGS.get_saliency_map:
             _ = test(index, get_saliency_map=True)

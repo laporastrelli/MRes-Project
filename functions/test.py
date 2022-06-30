@@ -32,7 +32,9 @@ def test(run_name,
          get_features=False, 
          get_saliency_map=False, 
          capacity_calculation=False, 
-         channel_transfer=False):
+         channel_transfer=False, 
+         frequency_analysis=False, 
+         IB_noise_calculation=False):
 
     FLAGS = flags.FLAGS
 
@@ -137,6 +139,7 @@ def test(run_name,
                                          num_iter=FLAGS.PGD_iterations,
                                          use_pop_stats=FLAGS.use_pop_stats, 
                                          capacity_regularization=FLAGS.capacity_regularization,
+                                         regularization_mode=FLAGS.regularization_mode,
                                          beta=FLAGS.beta)
 
     # channel transfer mode
@@ -153,6 +156,26 @@ def test(run_name,
                                         transfer_mode=FLAGS.transfer_mode,
                                         layer_to_test=FLAGS.layer_to_test,
                                         use_pop_stats=FLAGS.use_pop_stats)
+    
+    # frequency analysis
+    elif frequency_analysis:
+        test_utils.get_frequency_images(net,
+                                        PATH_to_model,
+                                        test_loader,
+                                        device,
+                                        run_name,
+                                        eval_mode=FLAGS.use_pop_stats, 
+                                        layer_to_test=FLAGS.layer_to_test, 
+                                        frequency_radius=int(FLAGS.frequency_radius))
+
+    elif IB_noise_calculation:
+        test_utils.IB_noise_calculation(net, 
+                                        PATH_to_model, 
+                                        test_loader,
+                                        device,
+                                        run_name, 
+                                        eval_mode=FLAGS.use_pop_stats, 
+                                        layer_to_test=FLAGS.layer_to_test)
 
     if len(outputs) == 1:
         return outputs[0]
