@@ -27,6 +27,11 @@ def get_csv_path(model_name):
     csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
                     + FLAGS.attacks_in[0] + '/' 
     
+    if FLAGS.test_frequency:
+        if not os.path.isdir(csv_path_dir + 'frequency_test/'):
+            os.mkdir(csv_path_dir + 'frequency_test/')
+        csv_path_dir = csv_path_dir + 'frequency_test/'
+
     # nosiy test
     if FLAGS.test_noisy:
         if not os.path.isdir(csv_path_dir + 'noisy_test/'):
@@ -46,7 +51,6 @@ def get_csv_path(model_name):
         csv_path_dir = csv_path_dir + 'channel_transfer/'
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + FLAGS.channel_transfer +  '.csv'
-    
 
     ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
@@ -54,12 +58,20 @@ def get_csv_path(model_name):
     else:
         acc_mode = ''
 
+    if model_name.find('ResNet')!= -1 and FLAGS.version != 1:
+        model_name += '_v' + str(FLAGS.version)
+
     if len(os.listdir(csv_path_dir)) == 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '.csv'
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
+    
+    if FLAGS.test_frequency:
+        FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
+                            + 'results_' + eval_mode_str + '_' + acc_mode + '_' \
+                            + str(FLAGS.which_frequency) + '.csv'
 
     if FLAGS.test_noisy:
         noise_var_str = str(FLAGS.noise_variance).replace('.', '')

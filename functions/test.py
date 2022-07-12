@@ -32,7 +32,11 @@ def test(run_name,
          get_features=False, 
          get_saliency_map=False, 
          capacity_calculation=False, 
-         channel_transfer=False):
+         channel_transfer=False, 
+         frequency_analysis=False, 
+         IB_noise_calculation=False, 
+         test_frequency=False,
+         parametric_frequency=False):
 
     FLAGS = flags.FLAGS
 
@@ -57,6 +61,17 @@ def test(run_name,
                                    noise_capacity_constraint=FLAGS.noise_capacity_constraint,
                                    capacity=FLAGS.capacity,
                                    get_logits=FLAGS.get_logits)
+        outputs.append(test_acc)
+    
+    if test_frequency:
+        test_acc = test_utils.test_frequency(net, 
+                                            PATH_to_model, 
+                                            test_loader, 
+                                            device, 
+                                            run_name=run_name,
+                                            eval_mode=FLAGS.use_pop_stats, 
+                                            which_frequency=FLAGS.which_frequency,
+                                            frequency_radius=int(FLAGS.frequency_radius))
         outputs.append(test_acc)
     
     # get saliency map of largest logit with respect to a given layer activation
@@ -137,6 +152,7 @@ def test(run_name,
                                          num_iter=FLAGS.PGD_iterations,
                                          use_pop_stats=FLAGS.use_pop_stats, 
                                          capacity_regularization=FLAGS.capacity_regularization,
+                                         regularization_mode=FLAGS.regularization_mode,
                                          beta=FLAGS.beta)
 
     # channel transfer mode
@@ -153,6 +169,39 @@ def test(run_name,
                                         transfer_mode=FLAGS.transfer_mode,
                                         layer_to_test=FLAGS.layer_to_test,
                                         use_pop_stats=FLAGS.use_pop_stats)
+    
+    # frequency analysis
+    elif frequency_analysis:
+        test_utils.get_frequency_images(net,
+                                        PATH_to_model,
+                                        test_loader,
+                                        device,
+                                        run_name,
+                                        eval_mode=FLAGS.use_pop_stats, 
+                                        layer_to_test=FLAGS.layer_to_test, 
+                                        frequency_radius=int(FLAGS.frequency_radius))
+
+    elif IB_noise_calculation:
+        test_utils.IB_noise_calculation(net, 
+                                        PATH_to_model, 
+                                        test_loader,
+                                        device,
+                                        run_name, 
+                                        eval_mode=FLAGS.use_pop_stats, 
+                                        layer_to_test=FLAGS.layer_to_test,
+                                        capacity_regularization=FLAGS.capacity_regularization)
+    
+    elif parametric_frequency:
+        test_utils.get_parametric_frequency(net, 
+                                            PATH_to_model, 
+                                            test_loader,
+                                            device,
+                                            run_name, 
+                                            eval_mode=FLAGS.use_pop_stats, 
+                                            layer_to_test=FLAGS.layer_to_test,
+                                            get_parametric_frequency_MSE_only=FLAGS.parametric_frequency_MSE,
+                                            get_parametric_frequency_MSE_CE=FLAGS.parametric_frequency_MSE_CE,
+                                            capacity_regularization=FLAGS.capacity_regularization)
 
     if len(outputs) == 1:
         return outputs[0]

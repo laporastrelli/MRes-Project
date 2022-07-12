@@ -51,13 +51,23 @@ flags.DEFINE_bool('scaled_noise_total', False, 'noise scaling based on total fix
 flags.DEFINE_string('channel_transfer', '', 'implement feature transfer for testing')
 flags.DEFINE_integer('n_channels_transfer', 0, 'number of channels to transfer')
 flags.DEFINE_string('transfer_mode', '', 'decide which transfer mode to use')
-flags.DEFINE_integer('layer_to_test', None, 'decide whihc layer to transfer activation to')
+flags.DEFINE_integer('layer_to_test', None, 'decide which layer to transfer activation to')
 
 flags.DEFINE_bool('capacity_regularization', False, 'use capacity regularization')
 flags.DEFINE_float('beta', 0.01, 'lagrangian multiplier for capacity regularization')
 flags.DEFINE_string('regularization_mode', '', 'capacity mode to choose from: "gauss_entropy", "capacity", "lambda_entropy"')
 
 flags.DEFINE_bool('get_saliency_map', False, 'get saliency maps')
+
+flags.DEFINE_bool('frequency_analysis', False, 'carry out frequency analsysis of activations')
+flags.DEFINE_integer('frequency_radius', 0, 'frequency radius to use for frequency decomposition')
+flags.DEFINE_string('which_frequency', None, 'choose between low or high to test')
+flags.DEFINE_bool('test_frequency', False, 'choose whether to test high/low frequency components')
+
+flags.DEFINE_bool('IB_noise_calculation', False, 'carry out noise calculation via IB principle')
+
+flags.DEFINE_bool('parametric_frequency_MSE', False, 'carry out noise std calculation for paramteric frequency MSE')
+flags.DEFINE_bool('parametric_frequency_MSE_CE', False, 'carry out noise std calculation for paramteric frequency MSE+CE')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
