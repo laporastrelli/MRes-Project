@@ -61,8 +61,13 @@ flags.DEFINE_bool('get_saliency_map', False, 'get saliency maps')
 
 flags.DEFINE_bool('frequency_analysis', False, 'carry out frequency analsysis of activations')
 flags.DEFINE_integer('frequency_radius', 0, 'frequency radius to use for frequency decomposition')
+flags.DEFINE_string('which_frequency', None, 'choose between low or high to test')
+flags.DEFINE_bool('test_frequency', False, 'choose whether to test high/low frequency components')
 
 flags.DEFINE_bool('IB_noise_calculation', False, 'carry out noise calculation via IB principle')
+
+flags.DEFINE_bool('parametric_frequency_MSE', False, 'carry out noise std calculation for paramteric frequency MSE')
+flags.DEFINE_bool('parametric_frequency_MSE_CE', False, 'carry out noise std calculation for paramteric frequency MSE+CE')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

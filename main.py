@@ -29,6 +29,9 @@ def main(argv):
     
     already_exists = False
 
+    print('capacity_regularization: ', FLAGS.capacity_regularization)
+    print('device: ', FLAGS.device)
+
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
         FLAGS.root_path = '/vol/bitbucket/lr4617'
@@ -83,18 +86,25 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.frequency_analysis:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1, 2, 3, 4, 5]: 
             already_exists = True
     if FLAGS.IB_noise_calculation:
-        if get_bn_int_from_name(FLAGS.pretrained_name) != 100: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
             already_exists = True
+    if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+            already_exists = True
+
 
     # save to results log if file not already saved
     if FLAGS.save_to_log:
         csv_path = get_csv_path(FLAGS.model_name)
         print('CSV PATH: ', csv_path)
         if FLAGS.load_pretrained: 
-            already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
+            if FLAGS.test_frequency:
+                already_exists = False
+            else:
+                already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
             print('ALREAD EXISTS IN RESULTS LOG: ', already_exists)
 
     # display model info
@@ -135,8 +145,14 @@ def main(argv):
         if FLAGS.test:
             test_acc = test(index, standard=True)
         
+        if FLAGS.test_frequency:
+            test_acc = test(index, test_frequency=True)
+
         if FLAGS.IB_noise_calculation:
             _ = test(index, IB_noise_calculation=True)
+        
+        if FLAGS.parametric_frequency_MSE or FLAGS.parametric_frequency_MSE_CE:
+            _ = test(index, parametric_frequency=True)
         
         if FLAGS.frequency_analysis:
             _ = test(index, frequency_analysis=True)
@@ -224,6 +240,15 @@ def main(argv):
                         csv_dict[columns_csv[i]] = log
                 if FLAGS.test:
                     csv_dict[columns_csv[5]] = test_acc
+                elif FLAGS.test_frequency:
+                    print(test_acc)
+                    freq_dict = {'radius': int(FLAGS.frequency_radius), \
+                                 'frequency_accuracy': float(test_acc)}
+                    # csv_dict[columns_csv[6]] = int(FLAGS.frequency_radius)
+                    # csv_dict[columns_csv[7]] = test_acc
+                    csv_dict.update(freq_dict) 
+                if not FLAGS.adversarial_test:
+                    adv_accs = {}
                 csv_dict.update(adv_accs)    
             
             elif len(result_log)>1 and FLAGS.capacity_regularization:
@@ -233,6 +258,7 @@ def main(argv):
                         csv_dict[columns_csv[i]] = log
                 if FLAGS.test:
                     csv_dict[columns_csv[6]] = test_acc
+
                 csv_dict.update(adv_accs)  
 
             if FLAGS.save_to_wandb: 

@@ -38,6 +38,7 @@ class proxy_VGG(nn.Module):
         self.gradients = 0
         self.train_mode = train_mode
         self.regularization_mode = regularization_mode
+        self.num_iterations = 0
 
         features = list(net.features)
         
@@ -53,14 +54,16 @@ class proxy_VGG(nn.Module):
                 self.features = nn.ModuleList(features)
                 self.avgpool = net.avgpool
                 self.classifier = net.classifier
+            
+            if self.regularization_mode == 'BN_once':
+                self.set_statistics()
         
         elif self.train_mode:
             self.features = nn.ModuleList(features)
             self.avgpool = net.avgpool
             self.classifier = net.classifier
-            if self.regularization_mode == 'uniform_lambda':
+            if self.regularization_mode in ['uniform_lambda', 'BN_once']:
                 self.set_gradient_mode(which='lambda')
-            
         ###########################################
     
     def set_grad(self, var):
@@ -73,17 +76,32 @@ class proxy_VGG(nn.Module):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
                 if which == 'lambda':
-                    model.weight.requires_grad=False
+                    model.weight.requires_grad = False
                 elif which == 'running_stats':
                     model.running_var.requires_grad = False
-                    model.running_mean.requires_grad = True
+                    model.running_mean.requires_grad = False
+    
+    def set_statistics(self):
+        bn_count = 0
+        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                model.running_mean = 0 * model.running_mean
+                model.running_var = 1 * model.running_var
+                bn_count += 1
+        return self.bn_parameters
     
     def set_running_stats(self, layer, mode='zero'):
         if mode == 'zero':
             layer.running_mean = 0 * layer.running_mean
-            layer.running_var = 0 * layer.running_var
+            layer.running_var = 1 * layer.running_var
         return layer
         
+    def set_iteration_num(self, iterations, epoch):
+        if epoch == 0:
+            self.num_iterations = iterations
+        else:
+            self.num_iterations = 1
     
     def forward(self, x, ch_activation=[], saliency_layer=''):
         bn_count = 0
@@ -116,6 +134,9 @@ class proxy_VGG(nn.Module):
                     self.set_gradients(temp)
 
                 if self.regularization_mode == 'wandb_only':
+                    model = self.set_running_stats(model, mode='zero')
+                
+                if self.regularization_mode == 'BN_once' and self.num_iterations > 0:
                     model = self.set_running_stats(model, mode='zero')
 
                 bn_count += 1

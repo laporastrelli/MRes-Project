@@ -61,6 +61,9 @@ def train (train_loader,
     # option for training models at the best of their performance (2) -- ResNet (only)
     if FLAGS.mode == 'standard': 
         if FLAGS.dataset == 'CIFAR10':
+            opt_func = optim.SGD
+            momentum=0.9
+            weight_decay=5e-4
             # option for full-BN training
             if batch_norm and sum(FLAGS.where_bn)>1:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR
@@ -88,6 +91,8 @@ def train (train_loader,
             if batch_norm and sum(FLAGS.where_bn)>1:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR
                 lr_ = 0.1
+                momentum=0.9
+                weight_decay=5e-4
                 opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
                 n_epochs = 75
                 grad_clip = False
@@ -102,6 +107,8 @@ def train (train_loader,
                     lr_ = 0.001
                 else:
                     lr_ = 0.01
+                momentum=0.9
+                weight_decay=5e-4
                 opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
                 n_epochs = 75
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', patience=10)
@@ -193,7 +200,13 @@ def train (train_loader,
             X,y = X.to(device), y.to(device)
 
             if FLAGS.capacity_regularization:
-                model.set_verbose(verbose=True)
+                if model_name.find('VGG')!=-1:
+                    model.set_verbose(verbose=True)
+
+            if FLAGS.capacity_regularization:
+                if FLAGS.regularization_mode == 'BN_once':
+                    model.set_iteration_num(iterations=i, epoch=epoch_num)
+                    regularizer = 0
 
             yp = model(X)
             loss = nn.CrossEntropyLoss()(yp,y)
@@ -316,7 +329,7 @@ def train (train_loader,
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
                     regularizer = 0
-            
+
             opt.zero_grad()
             loss.backward()
 
@@ -472,6 +485,9 @@ def train (train_loader,
                     elif FLAGS.regularization_mode == 'uniform_lambda':
                         regularizer_val = 0
                     elif FLAGS.regularization_mode == 'wandb_only':
+                        regularizer_val = 0
+                    elif FLAGS.regularization_mode == 'BN_once':
+                        model.set_iteration_num(iterations=i, epoch=1)
                         regularizer_val = 0
 
                 valid_loss += loss.item()
