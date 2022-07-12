@@ -1,3 +1,4 @@
+from pdb import runcall
 from tkinter.tix import Tree
 from bleach import clean
 import torch.nn as nn
@@ -82,15 +83,6 @@ def test(net,
     net.load_state_dict(torch.load(model_path))
     net.to(device)
 
-    ################## TEMPORARY ##################
-    if run_name.find('ResNet')!= -1:
-        net = proxy_ResNet(net, 
-                           eval_mode=eval_mode,
-                           device=device,
-                           run_name=run_name,
-                           noise_variance=noise_variance)
-    ################## TEMPORARY ################## 
-
     if inject_noise:
         if run_name.find('VGG') != -1:
             noisy_net = noisy_VGG(net, 
@@ -100,6 +92,13 @@ def test(net,
                                   capacity_=capacity,
                                   noise_capacity_constraint=noise_capacity_constraint, 
                                   run_name=run_name)
+
+        elif run_name.find('ResNet')!=-1:
+            noisy_net = noisy_ResNet(net,
+                                     eval_mode=eval_mode,
+                                     device=device,
+                                     run_name=run_name,
+                                     noise_variance=noise_variance)
 
     if eval_mode:
         net.eval()
@@ -143,17 +142,23 @@ def test(net,
             pad = torch.nn.ZeroPad2d(tuple(to_pad))
             X = pad(X_crop)
         if inject_noise:
-            noisy_net = noisy_VGG(net, 
-                                  eval_mode=eval_mode,
-                                  noise_variance=noise_variance, 
-                                  device=device,
-                                  capacity_=capacity,
-                                  noise_capacity_constraint=noise_capacity_constraint, 
-                                  run_name=run_name)
+            if run_name.find('VGG')!= -1:
+                noisy_net = noisy_VGG(net, 
+                                    eval_mode=eval_mode,
+                                    noise_variance=noise_variance, 
+                                    device=device,
+                                    capacity_=capacity,
+                                    noise_capacity_constraint=noise_capacity_constraint, 
+                                    run_name=run_name)
+            elif run_name.find('ResNet')!= -1:
+                noisy_net = noisy_ResNet(net,
+                                         eval_mode=eval_mode,
+                                         device=device,
+                                         run_name=run_name,
+                                         noise_variance=noise_variance)
             outputs = noisy_net(X)
             temp = outputs
         elif get_logits:
-            print('GET LOGITS')
             if i == 10:
                 acc = 0
                 break
@@ -590,22 +595,23 @@ def adversarial_test(net,
     ################## MODEL SELECTION ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
-        net = noisy_VGG(net, 
-                        eval_mode=use_pop_stats,
-                        noise_variance=noise_variance, 
-                        device=device,
-                        capacity_=capacity,
-                        noise_capacity_constraint=noise_capacity_constraint,
-                        run_name=run_name, 
-                        scaled_noise=scaled_noise, 
-                        scaled_noise_norm=scaled_noise_norm, 
-                        scaled_noise_total=scaled_noise_total)
-        
-        net = noisy_ResNet(net,
-                           eval_mode=use_pop_stats,
-                           device=device,
-                           run_name=run_name,
-                           noise_variance=noise_variance)
+        if run_name.find('VGG')!=-1:
+            net = noisy_VGG(net, 
+                            eval_mode=use_pop_stats,
+                            noise_variance=noise_variance, 
+                            device=device,
+                            capacity_=capacity,
+                            noise_capacity_constraint=noise_capacity_constraint,
+                            run_name=run_name, 
+                            scaled_noise=scaled_noise, 
+                            scaled_noise_norm=scaled_noise_norm, 
+                            scaled_noise_total=scaled_noise_total)
+        if run_name.find('ResNet')!= -1:
+            net = noisy_ResNet(net,
+                            eval_mode=use_pop_stats,
+                            device=device,
+                            run_name=run_name,
+                            noise_variance=noise_variance)
 
     if capacity_calculation or len(get_similarity)>0 or len(channel_transfer)>0:
         if run_name.find('VGG') != -1: 
@@ -1369,4 +1375,3 @@ def cross_model_testing_(test_loader, models_path, deltas_path, model_tag, devic
                 correct += (predicted == y).sum().item()
 
             print('ACCURACY ' + model_tag + ' trained on ' + delta_model_name + ' ADVERSARIAL test images: %d %%' % (100 * correct / total))
-

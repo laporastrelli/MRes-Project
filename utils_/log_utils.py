@@ -10,7 +10,10 @@ def get_csv_path(model_name):
     ##################### DEFINE DIRECTORIES #####################
     # root directory based on server
     if str(os.getcwd()).find('bitbucket') != -1:
-        root_dir = './gpucluster/SVHN/'
+        if FLAGS.dataset=='SVHN':
+            root_dir = './gpucluster/SVHN/'
+        elif FLAGS.dataset=='CIFAR10':
+            root_dir = './gpucluster/CIFAR10/'
     else:
         root_dir = './results/'
 

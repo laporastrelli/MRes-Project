@@ -27,11 +27,7 @@ def main(argv):
     # parse inputs 
     FLAGS = flags.FLAGS
     
-    print(FLAGS.result_log)
-
     already_exists = False
-
-    print(FLAGS.device)
 
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
@@ -48,8 +44,11 @@ def main(argv):
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
-    if FLAGS.test_noisy: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
     if FLAGS.adversarial_test and FLAGS.model_name.find('ResNet')!= -1: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    if FLAGS.test_noisy: 
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+        if FLAGS.pretrained_name.find('no_bn')!= -1:
+            already_exists = True
     
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
