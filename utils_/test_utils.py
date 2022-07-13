@@ -642,7 +642,7 @@ def adversarial_test(net,
     net.load_state_dict(torch.load(model_path))
     net.to(device)
 
-    ################## MODEL SELECTION ##################
+    ################## MODE SELECTION ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
         net = noisy_VGG(net, 
@@ -675,7 +675,7 @@ def adversarial_test(net,
                                device=device,
                                run_name=run_name,
                                noise_variance=noise_variance)
-    #####################################################
+    ####################################################
 
     ################## EVAL MODE ##################
     if use_pop_stats:
@@ -1465,6 +1465,28 @@ def distance(i, j, imageSize, r):
     else:
         return 0
 
+def get_cut_off_value(fft_img, percentage):
+    temp = fft_img.flatten()
+    ordered_temp = temp[::-1].sort()
+    how_many = int(float(temp.size)*percentage)
+    cut_off = ordered_temp[how_many]
+    return cut_off, how_many
+
+def mask_coefficient(fft_img, percentage):
+    rows, cols = fft_img.shape
+    mask = np.zeros((rows, cols))
+    cut_off, how_many = get_cut_off_value(fft_img, percentage)
+    count = 0
+    for i in range(rows):
+        for j in range(cols):
+            if fft_img[i,j] >= cut_off: 
+                mask[i, j] = 1.0
+            else:
+                mask[i, j] = 0.0
+
+            count += 1
+    return mask
+
 def mask_radial(img, r):
     rows, cols = img.shape
     mask = np.zeros((rows, cols))
@@ -1495,6 +1517,7 @@ def generateDataWithDifferentFrequencies_3Channel(Images, r):
 
     return np.array(Images_freq_low), np.array(Images_freq_high)
 
+
 def mse_error(input1, input2):
     return((input1 - input2)**2).mean()
 
@@ -1507,7 +1530,8 @@ def get_frequency_images(model,
                          layer_to_test=0, 
                          frequency_radius=[i for i in range(2,16)], 
                          visualization=False, 
-                         mse_comparison=True):
+                         mse_comparison=True, 
+                         use_conv=True):
     '''
     input(s):
         - model
@@ -1579,15 +1603,24 @@ def get_frequency_images(model,
 
             # feed standard sample and get corresponding activations
             _ = model(X)
-            activations = model.bn1.cpu().detach()
+            if use_conv:
+                activations = model.conv1.cpu().detach()
+            else:
+                activations = model.bn1.cpu().detach()
 
             # feed low-frequency sample and get corresponding activations 
             _ = model(low_f_img)
-            activations_low = model.bn1.cpu().detach()
+            if use_conv:
+                activations_low = model.conv1.cpu().detach()
+            else:
+                activations_low = model.bn1.cpu().detach()
 
             # feed high-frequency sample and get corresponding activations 
             _ = model(high_f_img)
-            activations_high = model.bn1.cpu().detach()
+            if use_conv:
+                activations_high = model.conv1.cpu().detach()
+            else:
+                activations_high = model.bn1.cpu().detach()
 
             if run_name.find('ResNet') != -1: ordered_channels = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)
             else: ordered_channels = torch.argsort(model.bn.weight.cpu().detach(), descending=False)
@@ -1740,6 +1773,10 @@ def get_frequency_images(model,
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
         root_path += run_name + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
+        if use_conv: root_path += 'use_conv' + '/'
+        else: root_path += 'use_bn' + '/'
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
         max_low = torch.max(torch.tensor(low_f_comparison))
