@@ -12,8 +12,8 @@ flags.DEFINE_string('model_name', None, 'model name among available models')
 flags.DEFINE_integer('version', None, 'model version to use (only for ResNet)')
 flags.DEFINE_integer('batch_size', 128, 'batch size for training')
 flags.DEFINE_string('dataset', None, 'dataset to use')
-flags.DEFINE_string('root_path', '/data2/users/lr4617/', 'path to root directory')
-flags.DEFINE_string('dataset_path', '/data2/users/lr4617/data/', 'path to dataset')
+flags.DEFINE_string('root_path', '/vol/bitbucket/lr4617', 'path to root directory')
+flags.DEFINE_string('dataset_path', '/vol/bitbucket/lr4617/data/', 'path to dataset')
 flags.DEFINE_string('csv_path', None, 'path to csv results file')
 flags.DEFINE_bool('verbose', True, 'Prompt informative text about running session')
 
@@ -68,6 +68,9 @@ flags.DEFINE_bool('IB_noise_calculation', False, 'carry out noise calculation vi
 
 flags.DEFINE_bool('parametric_frequency_MSE', False, 'carry out noise std calculation for paramteric frequency MSE')
 flags.DEFINE_bool('parametric_frequency_MSE_CE', False, 'carry out noise std calculation for paramteric frequency MSE+CE')
+
+flags.DEFINE_bool('rank_init', False, 'use rank-preserving initialization')
+flags.DEFINE_integer('pre_training_steps', 0, 'number of pre-training steps to use for rank-preserving initialization')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

@@ -1,3 +1,4 @@
+from pdb import runcall
 from tkinter.tix import Tree
 from bleach import clean
 import torch.nn as nn
@@ -92,6 +93,7 @@ def test(net,
                                   capacity_=capacity,
                                   noise_capacity_constraint=noise_capacity_constraint, 
                                   run_name=run_name)
+                                  
         elif run_name.find('ResNet') != -1:
             net = noisy_ResNet(net,
                                eval_mode=eval_mode,
@@ -99,7 +101,15 @@ def test(net,
                                run_name=run_name,
                                noise_variance=noise_variance)
 
-    if eval_mode: net.eval()
+        elif run_name.find('ResNet')!=-1:
+            noisy_net = noisy_ResNet(net,
+                                     eval_mode=eval_mode,
+                                     device=device,
+                                     run_name=run_name,
+                                     noise_variance=noise_variance)
+
+    if eval_mode:
+        net.eval()
 
     correct = 0
     total = 0
@@ -157,7 +167,6 @@ def test(net,
             outputs = noisy_net(X)
             temp = outputs
         elif get_logits:
-            print('GET LOGITS')
             if i == 10:
                 acc = 0
                 break
@@ -639,28 +648,30 @@ def adversarial_test(net,
                      n_channels=0, 
                      transfer_mode='capacity_based'):
 
-    net.load_state_dict(torch.load(model_path))
+    #net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## MODE SELECTION ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
-        net = noisy_VGG(net, 
-                        eval_mode=use_pop_stats,
-                        noise_variance=noise_variance, 
-                        device=device,
-                        capacity_=capacity,
-                        noise_capacity_constraint=noise_capacity_constraint,
-                        run_name=run_name, 
-                        scaled_noise=scaled_noise, 
-                        scaled_noise_norm=scaled_noise_norm, 
-                        scaled_noise_total=scaled_noise_total)
-        
-        net = noisy_ResNet(net,
-                           eval_mode=use_pop_stats,
-                           device=device,
-                           run_name=run_name,
-                           noise_variance=noise_variance)
+        if run_name.find('VGG')!=-1:
+            net = noisy_VGG(net, 
+                            eval_mode=use_pop_stats,
+                            noise_variance=noise_variance, 
+                            device=device,
+                            capacity_=capacity,
+                            noise_capacity_constraint=noise_capacity_constraint,
+                            run_name=run_name, 
+                            scaled_noise=scaled_noise, 
+                            scaled_noise_norm=scaled_noise_norm, 
+                            scaled_noise_total=scaled_noise_total)
+        if run_name.find('ResNet')!= -1:
+            net = noisy_ResNet(net,
+                            eval_mode=use_pop_stats,
+                            device=device,
+                            run_name=run_name,
+                            noise_variance=noise_variance)
 
     if capacity_calculation or len(get_similarity)>0 or len(channel_transfer)>0:
         if run_name.find('VGG') != -1: 
@@ -1839,6 +1850,7 @@ def IB_noise_calculation(model,
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         else: 
             noise_length = 64
+        
         model.noise_std = 0.3 + torch.zeros(noise_length, device=device, requires_grad=True) 
 
         # get channel variance
@@ -1873,7 +1885,10 @@ def IB_noise_calculation(model,
         running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
     
     # create path
-    root_path = './results/' + get_model_name(run_name) + '/'
+    if model_path.find('bitbucket') != -1:
+        root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
+    else:
+        root_path = './results/' + get_model_name(run_name) + '/'
 
     if eval_mode: root_path += 'eval/'
     else: root_path += 'no_eval/' 

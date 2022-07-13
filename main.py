@@ -47,7 +47,10 @@ def main(argv):
 
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
-    if FLAGS.test_noisy: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+    if FLAGS.test_noisy: 
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+        if FLAGS.pretrained_name.find('no_bn')!= -1:
+            already_exists = True
     if FLAGS.adversarial_test: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
     
     # model name logistics
@@ -73,6 +76,13 @@ def main(argv):
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'beta-lagrange', 'Test Accuracy', 'Epsilon Budget']
+    
+    if FLAGS.rank_init:
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
+        if FLAGS.save_to_log:
+            columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                           'Training Mode', 'pre-training-steps', 'Test Accuracy', 'Epsilon Budget']
+        
     else:
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
@@ -89,12 +99,11 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
             already_exists = True
     if FLAGS.IB_noise_calculation:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1, 5]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [2,3,4]: 
             already_exists = True
     if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
             already_exists = True
-
 
     # save to results log if file not already saved
     if FLAGS.save_to_log:
@@ -222,6 +231,18 @@ def main(argv):
                         columns_csv[5] : FLAGS.beta,
                         columns_csv[6] : test_acc,
                         columns_csv[7] : FLAGS.epsilon_in}
+
+                elif FLAGS.rank_init:
+                    csv_dict = {
+                        columns_csv[0] : index,
+                        columns_csv[1] : model_name_,
+                        columns_csv[2] : FLAGS.dataset,
+                        columns_csv[3] : bn_string, 
+                        columns_csv[4] : FLAGS.mode,
+                        columns_csv[5] : FLAGS.pre_training_steps,
+                        columns_csv[6] : test_acc,
+                        columns_csv[7] : FLAGS.epsilon_in}
+
                 else:
                     csv_dict = {
                         columns_csv[0] : index,
@@ -251,7 +272,7 @@ def main(argv):
                     adv_accs = {}
                 csv_dict.update(adv_accs)    
             
-            elif len(result_log)>1 and FLAGS.capacity_regularization:
+            elif len(result_log)>1 and (FLAGS.capacity_regularization or FLAGS.rank_init):
                 csv_dict = dict()
                 for i, log in enumerate(result_log):
                     if i <=6:

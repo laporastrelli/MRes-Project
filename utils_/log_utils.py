@@ -10,7 +10,10 @@ def get_csv_path(model_name):
     ##################### DEFINE DIRECTORIES #####################
     # root directory based on server
     if str(os.getcwd()).find('bitbucket') != -1:
-        root_dir = './gpucluster/SVHN/'
+        if FLAGS.dataset=='SVHN':
+            root_dir = './gpucluster/SVHN/'
+        elif FLAGS.dataset=='CIFAR10':
+            root_dir = './gpucluster/CIFAR10/'
     else:
         root_dir = './results/'
 
@@ -40,6 +43,11 @@ def get_csv_path(model_name):
         if not os.path.isdir(csv_path_dir + 'capacity_regularization/'):
             os.mkdir(csv_path_dir + 'capacity_regularization/')
         csv_path_dir = csv_path_dir + 'capacity_regularization/'
+    
+    if FLAGS.rank_init:
+        if not os.path.isdir(csv_path_dir + 'rank_init/'):
+            os.mkdir(csv_path_dir + 'rank_init/')
+        csv_path_dir = csv_path_dir + 'rank_init/' 
     
     # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
