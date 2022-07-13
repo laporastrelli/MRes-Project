@@ -44,6 +44,11 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'capacity_regularization/')
         csv_path_dir = csv_path_dir + 'capacity_regularization/'
     
+    if FLAGS.rank_init:
+        if not os.path.isdir(csv_path_dir + 'rank_init/'):
+            os.mkdir(csv_path_dir + 'rank_init/')
+        csv_path_dir = csv_path_dir + 'rank_init/' 
+    
     # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
         if not os.path.isdir(csv_path_dir + 'channel_transfer/'):

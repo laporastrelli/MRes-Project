@@ -1813,6 +1813,7 @@ def IB_noise_calculation(model,
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         else: 
             noise_length = 64
+        
         model.noise_std = 0.3 + torch.zeros(noise_length, device=device, requires_grad=True) 
 
         # get channel variance
@@ -1847,7 +1848,10 @@ def IB_noise_calculation(model,
         running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
     
     # create path
-    root_path = './results/' + get_model_name(run_name) + '/'
+    if model_path.find('bitbucket') != -1:
+        root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
+    else:
+        root_path = './results/' + get_model_name(run_name) + '/'
 
     if eval_mode: root_path += 'eval/'
     else: root_path += 'no_eval/' 

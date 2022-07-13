@@ -160,6 +160,57 @@ def train (train_loader,
             opt = opt_func(model.parameters(), lr=lr_,  momentum=momentum, weight_decay=weight_decay)
             scheduler = lr_scheduler(opt, 'min', patience=6)
 
+    print('LR scheduler: ', lr_scheduler)
+    print('Starting LR: ', lr_)
+
+    if FLAGS.rank_init:
+        negative_rank_ = torch.tensor(0.0)
+        negative_rank_.requires_grad = True
+        optimizer_init = optim.SGD(model.parameters(), lr=0.1)
+        for iteration in range(int(FLAGS.pre_training_steps)):
+            model.train()
+            print(iteration)
+            total_rank = 0
+            for i, data in enumerate(train_loader, 0):
+                X,y = data
+                X,y = X.to(device), y.to(device)
+
+                # zero the gradients
+                optimizer_init.zero_grad()
+
+                # forward pass of the batch
+                _ = model(X)
+
+                # get last layer activations
+                activations = model.last_layer
+
+                print(activations.size())
+
+                # compute rank on last layer activations 
+                activations_t = torch.transpose(activations, 0, 1)
+                activations_g = torch.matmul(activations_t, activations)/X.size(0)
+
+                print(activations_g.size())
+
+                activations_n = torch.linalg.matrix_norm(activations_g, ord='fro')
+                numerator = (torch.trace(activations_g))**2
+                denominator = (activations_n)**2
+                rank_ = numerator/denominator
+                negative_rank_ = -rank_
+
+                print(negative_rank_.requires_grad)
+
+                total_rank += rank_
+
+                # compute gradients
+                negative_rank_.backward()
+
+                # optimize weights
+                optimizer_init.step()
+
+            if FLAGS.save_to_wandb:
+                run.log({"rank_pre_train": total_rank/len(train_loader)})
+
     # wandb config
     if FLAGS.save_to_wandb:
         if sum(FLAGS.where_bn)==0:
@@ -168,6 +219,7 @@ def train (train_loader,
             bn_string = 'Yes - ' + 'all'
         else:
             bn_string = 'Yes - ' + str(FLAGS.where_bn.index(1) + 1) + ' of ' + str(len(FLAGS.where_bn))
+
         config = {
             "run_name": run_name,
             "bn_config": bn_string,
@@ -176,6 +228,8 @@ def train (train_loader,
             "optimizer": opt_func,
             "capacity_regularization": FLAGS.capacity_regularization,
             "regularization_mode": FLAGS.regularization_mode,
+            "rank-preserving init": FLAGS.rank_init,
+            "pre-training steps": FLAGS.pre_training_steps,
             "beta": FLAGS.beta,
             "learning_rate": lr_,
             "learning_rate_scheduler": lr_scheduler,
@@ -185,9 +239,6 @@ def train (train_loader,
             "epochs": n_epochs}
         run.config.update(config)
 
-    print('LR scheduler: ', lr_scheduler)
-    print('Starting LR: ', lr_)
-
     ################ Training ################
     for epoch_num in range(n_epochs):
         model.train()
@@ -195,6 +246,7 @@ def train (train_loader,
         total_regularizer = 0
         total = 0
         for i, data in enumerate(train_loader, 0):
+
             loss = 0
             X,y = data
             X,y = X.to(device), y.to(device)
@@ -202,8 +254,6 @@ def train (train_loader,
             if FLAGS.capacity_regularization:
                 if model_name.find('VGG')!=-1:
                     model.set_verbose(verbose=True)
-
-            if FLAGS.capacity_regularization:
                 if FLAGS.regularization_mode == 'BN_once':
                     model.set_iteration_num(iterations=i, epoch=epoch_num)
                     regularizer = 0

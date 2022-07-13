@@ -42,6 +42,9 @@ class proxy_ResNet(nn.Module):
         # saliency map mode
         self.saliency_map = saliency_map
 
+        # for rank preserving init
+        self.last_layer = 0
+
         # IB noise calculation mode
         self.IB_noise_calculation = IB_noise_calculation
         self.IB_noise_std = IB_noise_std

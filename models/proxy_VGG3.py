@@ -17,77 +17,6 @@ from torchvision import datasets, transforms
 
 FLAGS = flags.FLAGS
 
-class GaussianSmoothing(nn.Module):
-    """
-    Apply gaussian smoothing on a
-    1d, 2d or 3d tensor. Filtering is performed seperately for each channel
-    in the input using a depthwise convolution.
-    Arguments:
-        channels (int, sequence): Number of channels of the input tensors. Output will
-            have this number of channels as well.
-        kernel_size (int, sequence): Size of the gaussian kernel.
-        sigma (float, sequence): Standard deviation of the gaussian kernel.
-        dim (int, optional): The number of dimensions of the data.
-            Default value is 2 (spatial).
-    """
-    def __init__(self, channels, kernel_size, sigma, dim=2):
-        super(GaussianSmoothing, self).__init__()
-        if isinstance(kernel_size, numbers.Number):
-            kernel_size = [kernel_size] * dim
-        if isinstance(sigma, numbers.Number):
-            sigma = [sigma] * dim
-
-        # The gaussian kernel is the product of the
-        # gaussian function of each dimension.
-        kernel = 1
-        meshgrids = torch.meshgrid(
-            [
-                torch.arange(size, dtype=torch.float32)
-                for size in kernel_size
-            ]
-        )
-
-        for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
-            mean = (size - 1) / 2
-            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * \
-                      torch.exp(-((mgrid - mean) / std) ** 2 / 2)
-
-        print(kernel.size())
-
-        # Make sure sum of values in gaussian kernel equals 1.
-        kernel = kernel / torch.sum(kernel)
-
-        # Reshape to depthwise convolutional weight
-        kernel = kernel.view(1, 1, *kernel.size())
-        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
-
-        #############################################################
-        self.register_buffer('weight', kernel)
-        #############################################################
-
-        self.groups = channels
-
-        if dim == 1:
-            self.conv = F.conv1d
-        elif dim == 2:
-            self.conv = F.conv2d
-        elif dim == 3:
-            self.conv = F.conv3d
-        else:
-            raise RuntimeError(
-                'Only 1, 2 and 3 dimensions are supported. Received {}.'.format(dim)
-            )
-
-    def forward(self, input):
-        """
-        Apply gaussian filter to input.
-        Arguments:
-            input (torch.Tensor): Input to apply gaussian filter on.
-        Returns:
-            filtered (torch.Tensor): Filtered output.
-        """
-        return self.conv(input, weight=self.weight, groups=self.groups)
-
 class proxy_VGG3(nn.Module):
     '''
     This proxy VGG model is used for the calculation of noise
@@ -148,7 +77,12 @@ class proxy_VGG3(nn.Module):
         ############################
 
         ############################
+        self.last_layer = 0
+        ############################
+
+        ############################
         features = list(net.features)
+        classifier = list(net.classifier)
         ############################
         
         # ---- WATCH OUT w/ .eval() ---- #
@@ -157,11 +91,12 @@ class proxy_VGG3(nn.Module):
             net.eval()
             self.features = nn.ModuleList(features).eval()
             self.avgpool = net.avgpool.eval()
-            self.classifier = net.classifier.eval()
+            # self.classifier = net.classifier.eval()
+            self.classifier = nn.ModuleList(classifier).eval()
         else:
             self.features = nn.ModuleList(features)
             self.avgpool = net.avgpool
-            self.classifier = net.classifier
+            self.classifier = nn.ModuleList(classifier)
         ###########################################
     
     def get_gaussian_kernel(self, kernel_size=5, channels=1):
@@ -249,6 +184,7 @@ class proxy_VGG3(nn.Module):
                         x = x + noise.to(self.device)
                         self.noise_std.retain_grad()
                     
+                    ###########################################################################
                     if self.get_parametric_frequency_MSE_CE and self.layer_to_test==bn_count:
                         # construct channel-wise gaussian-based convolutional layer
                         self.ground_truth_activations = x.detach().clone()
@@ -261,41 +197,49 @@ class proxy_VGG3(nn.Module):
 
                         # calculate convolution output gradient
                         self.gaussian_activations.retain_grad()
-                    
-                    if self.get_parametric_frequency_MSE_CE and self.layer_to_test==bn_count:
+
+                        # apply batch norm
                         x = model(self.gaussian_activations)
+
                     else:
                         x = model(x)
+                    ###########################################################################
 
                     bn_count += 1
-
+                
                 else:
                     x = model(x)
 
                 # get IB noise variance for un-normalized models
-                if self.get_bn_int_from_name() not in [100, 1]:
-                    if isinstance(model, torch.nn.modules.conv.Conv2d):    
-                        if self.get_running_var and self.layer_to_test==conv_count:
-                            print('LAYER: ', conv_count)
-                            self.running_var = x.var([0, 2, 3], unbiased=False).detach()
-                        if self.IB_noise_calculation and self.layer_to_test==conv_count:
-                            noise = torch.zeros_like(x, device=self.device)
-                            for dim in range(self.noise_std.size(0)):
-                                noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
-                                                        *torch.normal(0, 1, size=x[:, dim, :, :].size(), device=self.device)                
-                            x = x + noise.to(self.device)
-                            self.noise_std.retain_grad()
+                if self.IB_noise_calculation:
+                    if self.get_bn_int_from_name() not in [100, 1]:
+                        if isinstance(model, torch.nn.modules.conv.Conv2d):    
+                            if self.get_running_var and self.layer_to_test==conv_count:
+                                print('LAYER: ', conv_count)
+                                self.running_var = x.var([0, 2, 3], unbiased=False).detach()
+                            if self.IB_noise_calculation and self.layer_to_test==conv_count:
+                                noise = torch.zeros_like(x, device=self.device)
+                                for dim in range(self.noise_std.size(0)):
+                                    noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
+                                                            *torch.normal(0, 1, size=x[:, dim, :, :].size(), device=self.device)                
+                                x = x + noise.to(self.device)
+                                self.noise_std.retain_grad()
 
-                        conv_count += 1
+                            conv_count += 1
 
                 if self.noise_variance != float(0):
                     x = x + torch.normal(0, float(self.noise_variance), size=x.size()).to(self.device)
-                
+            
             x = self.avgpool(x)
             x = torch.flatten(x, 1)
-            out = self.classifier(x)
+            
+            # unpack classifier module list to get last hidden layer activations
+            for jj, classifier_layer in enumerate(self.classifier):
+                if jj == 5:
+                    self.last_layer = x.clone()
+                x = classifier_layer(x)
 
-            return out
+            return x
 
     def get_capacity(self):
         return self.capacity
@@ -347,3 +291,73 @@ class proxy_VGG3(nn.Module):
         return bn_locations
     
     
+class GaussianSmoothing(nn.Module):
+    """
+    Apply gaussian smoothing on a
+    1d, 2d or 3d tensor. Filtering is performed seperately for each channel
+    in the input using a depthwise convolution.
+    Arguments:
+        channels (int, sequence): Number of channels of the input tensors. Output will
+            have this number of channels as well.
+        kernel_size (int, sequence): Size of the gaussian kernel.
+        sigma (float, sequence): Standard deviation of the gaussian kernel.
+        dim (int, optional): The number of dimensions of the data.
+            Default value is 2 (spatial).
+    """
+    def __init__(self, channels, kernel_size, sigma, dim=2):
+        super(GaussianSmoothing, self).__init__()
+        if isinstance(kernel_size, numbers.Number):
+            kernel_size = [kernel_size] * dim
+        if isinstance(sigma, numbers.Number):
+            sigma = [sigma] * dim
+
+        # The gaussian kernel is the product of the
+        # gaussian function of each dimension.
+        kernel = 1
+        meshgrids = torch.meshgrid(
+            [
+                torch.arange(size, dtype=torch.float32)
+                for size in kernel_size
+            ]
+        )
+
+        for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
+            mean = (size - 1) / 2
+            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * \
+                      torch.exp(-((mgrid - mean) / std) ** 2 / 2)
+
+        print(kernel.size())
+
+        # Make sure sum of values in gaussian kernel equals 1.
+        kernel = kernel / torch.sum(kernel)
+
+        # Reshape to depthwise convolutional weight
+        kernel = kernel.view(1, 1, *kernel.size())
+        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
+
+        #############################################################
+        self.register_buffer('weight', kernel)
+        #############################################################
+
+        self.groups = channels
+
+        if dim == 1:
+            self.conv = F.conv1d
+        elif dim == 2:
+            self.conv = F.conv2d
+        elif dim == 3:
+            self.conv = F.conv3d
+        else:
+            raise RuntimeError(
+                'Only 1, 2 and 3 dimensions are supported. Received {}.'.format(dim)
+            )
+
+    def forward(self, input):
+        """
+        Apply gaussian filter to input.
+        Arguments:
+            input (torch.Tensor): Input to apply gaussian filter on.
+        Returns:
+            filtered (torch.Tensor): Filtered output.
+        """
+        return self.conv(input, weight=self.weight, groups=self.groups)

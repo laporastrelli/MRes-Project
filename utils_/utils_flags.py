@@ -69,6 +69,9 @@ flags.DEFINE_bool('IB_noise_calculation', False, 'carry out noise calculation vi
 flags.DEFINE_bool('parametric_frequency_MSE', False, 'carry out noise std calculation for paramteric frequency MSE')
 flags.DEFINE_bool('parametric_frequency_MSE_CE', False, 'carry out noise std calculation for paramteric frequency MSE+CE')
 
+flags.DEFINE_bool('rank_init', False, 'use rank-preserving initialization')
+flags.DEFINE_integer('pre_training_steps', 0, 'number of pre-training steps to use for rank-preserving initialization')
+
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
 flags.DEFINE_string('attack', None, 'type of adversarial attack')
