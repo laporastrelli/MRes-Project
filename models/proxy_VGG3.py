@@ -156,7 +156,8 @@ class proxy_VGG3(nn.Module):
             conv_count = 0
 
             # unpack rest of the model
-            for ii, model in enumerate(self.features):           
+            for ii, model in enumerate(self.features): 
+
                 if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                     assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
 
@@ -206,26 +207,41 @@ class proxy_VGG3(nn.Module):
                     ###########################################################################
 
                     bn_count += 1
-                
+                                
                 else:
                     x = model(x)
 
                 # get IB noise variance for un-normalized models
-                if self.IB_noise_calculation:
-                    if self.get_bn_int_from_name() not in [100, 1]:
-                        if isinstance(model, torch.nn.modules.conv.Conv2d):    
-                            if self.get_running_var and self.layer_to_test==conv_count:
-                                print('LAYER: ', conv_count)
-                                self.running_var = x.var([0, 2, 3], unbiased=False).detach()
-                            if self.IB_noise_calculation and self.layer_to_test==conv_count:
-                                noise = torch.zeros_like(x, device=self.device)
-                                for dim in range(self.noise_std.size(0)):
-                                    noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
-                                                            *torch.normal(0, 1, size=x[:, dim, :, :].size(), device=self.device)                
-                                x = x + noise.to(self.device)
-                                self.noise_std.retain_grad()
+                if self.get_bn_int_from_name() not in [100, 1]:
+                    if isinstance(model, torch.nn.modules.conv.Conv2d):    
+                        if self.get_running_var and self.layer_to_test==conv_count:
+                            print('LAYER: ', conv_count)
+                            self.running_var = x.var([0, 2, 3], unbiased=False).detach()
+                        if self.IB_noise_calculation and self.layer_to_test==conv_count:
+                            noise = torch.zeros_like(x, device=self.device)
+                            for dim in range(self.noise_std.size(0)):
+                                noise[:, dim, :, :] = nn.functional.softplus(self.noise_std[dim])\
+                                                        *torch.normal(0, 1, size=x[:, dim, :, :].size(), device=self.device)                
+                            x = x + noise.to(self.device)
+                            self.noise_std.retain_grad()
+
+                            conv_count += 1 
+                        if self.get_parametric_frequency_MSE_CE and self.layer_to_test==conv_count:
+                            # construct channel-wise gaussian-based convolutional layer
+                            self.ground_truth_activations = x.detach().clone()
+                            # apply it
+                            x = F.conv2d(x, self.get_gaussian_kernel(), padding=2, groups=self.channels)
+
+                            self.gaussian_activations = x.clone()
+
+                            # calculate standard deviation gradient
+                            self.gaussian_std.retain_grad()
+
+                            # calculate convolution output gradient
+                            self.gaussian_activations.retain_grad()
 
                             conv_count += 1
+                            bn_count += 1
 
                 if self.noise_variance != float(0):
                     x = x + torch.normal(0, float(self.noise_variance), size=x.size()).to(self.device)

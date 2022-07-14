@@ -102,7 +102,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [2,3,4]: 
             already_exists = True
     if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
             already_exists = True
 
     # save to results log if file not already saved

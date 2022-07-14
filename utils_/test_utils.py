@@ -1528,7 +1528,6 @@ def generateDataWithDifferentFrequencies_3Channel(Images, r):
 
     return np.array(Images_freq_low), np.array(Images_freq_high)
 
-
 def mse_error(input1, input2):
     return((input1 - input2)**2).mean()
 
@@ -2040,6 +2039,8 @@ def get_parametric_frequency(model,
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model.to(device)
 
+    print('LAYER TO TEST: ', layer_to_test)
+
     # initiate model
     if run_name.find('VGG')!= -1:
         model = proxy_VGG3(model, 
@@ -2151,10 +2152,13 @@ def get_parametric_frequency(model,
                 if get_bn_int_from_name(run_name) in [100, 1]: 
                     lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
-                    sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
+                    sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
+                else:
+                    sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+                         
                 noise_std = model.gaussian_std.detach()
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
-                else: ordered_noise_std = noise_std
+                else: ordered_noise_std = noise_std[sorted_lambdas]
 
                 fig = plt.figure()
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
@@ -2213,7 +2217,9 @@ def get_parametric_frequency(model,
         sorted_lambdas = torch.argsort(lambdas, descending=True)
         ordered_noise_std = noise_std[sorted_lambdas]
     # else we save it in the given order
-    else: ordered_noise_std = noise_std
+    else: 
+        sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+        ordered_noise_std = noise_std[sorted_lambdas]
 
     if get_bn_int_from_name(run_name) not in [100, 1]: 
         noise_ordered_channels = torch.argsort(noise_std, descending=False)
