@@ -184,13 +184,9 @@ def train (train_loader,
                 # get last layer activations
                 activations = model.last_layer
 
-                print(activations.size())
-
                 # compute rank on last layer activations 
                 activations_t = torch.transpose(activations, 0, 1)
                 activations_g = torch.matmul(activations_t, activations)/X.size(0)
-
-                print(activations_g.size())
 
                 activations_n = torch.linalg.matrix_norm(activations_g, ord='fro')
                 numerator = (torch.trace(activations_g))**2
@@ -245,6 +241,7 @@ def train (train_loader,
         total_loss, total_err = 0.,0.
         total_regularizer = 0
         total = 0
+        regularizer = 0.0
         for i, data in enumerate(train_loader, 0):
 
             loss = 0
@@ -406,6 +403,7 @@ def train (train_loader,
         ################ Validation ################
         valid_loss = 0.0
         valid_regularizer = 0.0
+        regularizer_val = 0.0
         model.eval()
       
         correct = 0
