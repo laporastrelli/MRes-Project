@@ -652,7 +652,7 @@ def adversarial_test(net,
     net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
-    ################## MODEL SELECTION ##################
+    ################## MODE SELECTION ##################
     if inject_noise:
         print('Adversarial Test With Noise ...')
         if run_name.find('VGG')!=-1:
@@ -686,7 +686,7 @@ def adversarial_test(net,
                                device=device,
                                run_name=run_name,
                                noise_variance=noise_variance)
-    #####################################################
+    ####################################################
 
     ################## EVAL MODE ##################
     if use_pop_stats:
@@ -1476,6 +1476,28 @@ def distance(i, j, imageSize, r):
     else:
         return 0
 
+def get_cut_off_value(fft_img, percentage):
+    temp = fft_img.flatten()
+    ordered_temp = temp[::-1].sort()
+    how_many = int(float(temp.size)*percentage)
+    cut_off = ordered_temp[how_many]
+    return cut_off, how_many
+
+def mask_coefficient(fft_img, percentage):
+    rows, cols = fft_img.shape
+    mask = np.zeros((rows, cols))
+    cut_off, how_many = get_cut_off_value(fft_img, percentage)
+    count = 0
+    for i in range(rows):
+        for j in range(cols):
+            if fft_img[i,j] >= cut_off: 
+                mask[i, j] = 1.0
+            else:
+                mask[i, j] = 0.0
+
+            count += 1
+    return mask
+
 def mask_radial(img, r):
     rows, cols = img.shape
     mask = np.zeros((rows, cols))
@@ -1518,7 +1540,8 @@ def get_frequency_images(model,
                          layer_to_test=0, 
                          frequency_radius=[i for i in range(2,16)], 
                          visualization=False, 
-                         mse_comparison=True):
+                         mse_comparison=True, 
+                         use_conv=True):
     '''
     input(s):
         - model
@@ -1590,15 +1613,24 @@ def get_frequency_images(model,
 
             # feed standard sample and get corresponding activations
             _ = model(X)
-            activations = model.bn1.cpu().detach()
+            if use_conv:
+                activations = model.conv1.cpu().detach()
+            else:
+                activations = model.bn1.cpu().detach()
 
             # feed low-frequency sample and get corresponding activations 
             _ = model(low_f_img)
-            activations_low = model.bn1.cpu().detach()
+            if use_conv:
+                activations_low = model.conv1.cpu().detach()
+            else:
+                activations_low = model.bn1.cpu().detach()
 
             # feed high-frequency sample and get corresponding activations 
             _ = model(high_f_img)
-            activations_high = model.bn1.cpu().detach()
+            if use_conv:
+                activations_high = model.conv1.cpu().detach()
+            else:
+                activations_high = model.bn1.cpu().detach()
 
             if run_name.find('ResNet') != -1: ordered_channels = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)
             else: ordered_channels = torch.argsort(model.bn.weight.cpu().detach(), descending=False)
@@ -1751,6 +1783,10 @@ def get_frequency_images(model,
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
         root_path += run_name + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
+        if use_conv: root_path += 'use_conv' + '/'
+        else: root_path += 'use_bn' + '/'
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
         max_low = torch.max(torch.tensor(low_f_comparison))
@@ -2003,6 +2039,8 @@ def get_parametric_frequency(model,
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model.to(device)
 
+    print('LAYER TO TEST: ', layer_to_test)
+
     # initiate model
     if run_name.find('VGG')!= -1:
         model = proxy_VGG3(model, 
@@ -2114,10 +2152,13 @@ def get_parametric_frequency(model,
                 if get_bn_int_from_name(run_name) in [100, 1]: 
                     lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
-                    sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
+                    sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
+                else:
+                    sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+                         
                 noise_std = model.gaussian_std.detach()
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
-                else: ordered_noise_std = noise_std
+                else: ordered_noise_std = noise_std[sorted_lambdas]
 
                 fig = plt.figure()
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
@@ -2176,7 +2217,9 @@ def get_parametric_frequency(model,
         sorted_lambdas = torch.argsort(lambdas, descending=True)
         ordered_noise_std = noise_std[sorted_lambdas]
     # else we save it in the given order
-    else: ordered_noise_std = noise_std
+    else: 
+        sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+        ordered_noise_std = noise_std[sorted_lambdas]
 
     if get_bn_int_from_name(run_name) not in [100, 1]: 
         noise_ordered_channels = torch.argsort(noise_std, descending=False)
