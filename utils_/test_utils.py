@@ -2071,13 +2071,20 @@ def get_parametric_frequency(model,
     
     # initial noise std
     if get_parametric_frequency_MSE_only: std_init = 0.75
-    elif get_parametric_frequency_MSE_CE: std_init = 1.0
+    elif get_parametric_frequency_MSE_CE: 
+        if get_bn_int_from_name(run_name) == 0:
+            std_init = 0.75
+        else:
+            std_init = 1
 
     # initialize noise standard deviation as a list of 2-dimensional tensors (sigma_x, sigma_y)_C
     model.gaussian_std = std_init*torch.ones(noise_length, device=device, requires_grad=True)
     
     # create path
-    root_path = './results/' + get_model_name(run_name) + '/'
+    if model_path.find('bitbucket') != -1:
+        root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
+    else:
+        root_path = './results/' + get_model_name(run_name) + '/'
 
     if eval_mode: root_path += 'eval/'
     else: root_path += 'no_eval/' 
@@ -2154,7 +2161,10 @@ def get_parametric_frequency(model,
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
                 else:
-                    sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+                    if model_path.find('bitbucket'):
+                        sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+                    else:
+                        sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
                          
                 noise_std = model.gaussian_std.detach()
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
@@ -2218,9 +2228,14 @@ def get_parametric_frequency(model,
         lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
         sorted_lambdas = torch.argsort(lambdas, descending=True)
         ordered_noise_std = noise_std[sorted_lambdas]
+    
     # else we save it in the given order
     else: 
-        sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+        if model_path.find('bitbucket'):
+            sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+        else:
+            sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
+        
         ordered_noise_std = noise_std[sorted_lambdas]
     
     np.save(root_path + 'ordered_channel_noise_variance.npy', np.array(ordered_noise_std.cpu().detach()))
