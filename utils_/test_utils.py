@@ -2210,6 +2210,8 @@ def get_parametric_frequency(model,
 
     noise_std = model.gaussian_std
 
+    frequency_ordered_channels = torch.argsort(noise_std, descending=False)
+
     # if the config has Batch Norm at the first layer then we save the noise ordered based on lambdas
     # but we also care to save the ordering of the noise itself to comapre it with that of lambda
     if get_bn_int_from_name(run_name) in [100, 1]: 
@@ -2220,12 +2222,8 @@ def get_parametric_frequency(model,
     else: 
         sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
         ordered_noise_std = noise_std[sorted_lambdas]
-
-    if get_bn_int_from_name(run_name) not in [100, 1]: 
-        noise_ordered_channels = torch.argsort(noise_std, descending=False)
-        std_ordered_lambdas = sorted_lambdas[noise_ordered_channels]
     
     np.save(root_path + 'ordered_channel_noise_variance.npy', np.array(ordered_noise_std.cpu().detach()))
-    np.save(root_path + 'noise_ordered_lambdas.npy', np.array(std_ordered_lambdas.cpu().detach()))
+    np.save(root_path + 'frequency_ordered_channels.npy', np.array(frequency_ordered_channels.cpu().detach()))
     
 
