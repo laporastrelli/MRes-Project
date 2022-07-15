@@ -256,6 +256,11 @@ def train (train_loader,
                     regularizer = 0
 
             yp = model(X)
+
+            if FLAGS.track_rank:
+                if i == 0:
+                    rank = torch.matrix_rank(torch.transpose(model.last_layer, 0, 1))
+                    
             loss = nn.CrossEntropyLoss()(yp,y)
 
             if FLAGS.capacity_regularization:
@@ -399,6 +404,8 @@ def train (train_loader,
             run.log({"loss_train": total_loss/len(train_loader)})
             run.log({"regularizer_train": total_regularizer/len(train_loader)})
             run.log({"acc_train": (total - total_err)/total})
+            if FLAGS.track_rank:
+                run.log({"rank train (last layer)": rank})
 
         ################ Validation ################
         valid_loss = 0.0

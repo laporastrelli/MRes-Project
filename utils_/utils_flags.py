@@ -72,6 +72,9 @@ flags.DEFINE_bool('parametric_frequency_MSE_CE', False, 'carry out noise std cal
 flags.DEFINE_bool('rank_init', False, 'use rank-preserving initialization')
 flags.DEFINE_integer('pre_training_steps', 0, 'number of pre-training steps to use for rank-preserving initialization')
 
+flags.DEFINE_bool('track_rank', False, 'track rank of last layer activations during training')
+
+
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
 flags.DEFINE_string('attack', None, 'type of adversarial attack')

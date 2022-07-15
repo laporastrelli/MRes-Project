@@ -277,6 +277,7 @@ class proxy_ResNet(nn.Module):
         
         x = F.avg_pool2d(x, 4)
         pre_out = x.view(x.size(0), -1)
+        self.last_layer = pre_out.detach().clone()
         final = self.net.linear(pre_out)
 
         return final

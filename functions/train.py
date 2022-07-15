@@ -56,7 +56,7 @@ def train(model_name, where_bn):
     writer = SummaryWriter('./runs/' + run_name)
     PATH_to_model = FLAGS.root_path + '/models/' + FLAGS.model_name + '/' + run_name + '.pth'
     
-    net = get_model.get_model(FLAGS.model_name, FLAGS.where_bn)
+    net = get_model.get_model(FLAGS.model_name, FLAGS.where_bn, run_name=run_name)
 
     # train model
     return_s = train_utils.train(train_loader, 

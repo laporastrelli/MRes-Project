@@ -4,7 +4,7 @@ from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
-def get_model(model_name, where_bn):
+def get_model(model_name, where_bn, run_name=''):
     
     if model_name == 'ResNet50':
         if sum(where_bn)>1:
@@ -26,12 +26,13 @@ def get_model(model_name, where_bn):
             else:
                 net = ResNet_v1.ResNet50(where_bn=where_bn)
         
-        if FLAGS.capacity_regularization or FLAGS.rank_init:
+        if FLAGS.capacity_regularization or FLAGS.rank_init or FLAGS.track_rank:
             print('Training/Testing with capacity regularization ...')
             net = proxy_ResNet.proxy_ResNet(net, 
                                             eval_mode=FLAGS.use_pop_stats,
                                             device=FLAGS.device,
-                                            noise_variance=FLAGS.noise_variance, 
+                                            noise_variance=FLAGS.noise_variance,
+                                            run_name=run_name, 
                                             train_mode=FLAGS.train,
                                             regularization_mode=FLAGS.regularization_mode)
     
@@ -70,15 +71,14 @@ def get_model(model_name, where_bn):
                                           train_mode=FLAGS.train,
                                           regularization_mode=FLAGS.regularization_mode)
         
-        if FLAGS.rank_init:
+        if FLAGS.rank_init or FLAGS.track_rank:
             print('Training/Testing with rank-preserving initialization ...')
             if model_name.find('VGG')!= -1:
                 net = proxy_VGG3(net, 
                                 eval_mode=FLAGS.use_pop_stats,
                                 device=FLAGS.device,
-                                noise_variance=FLAGS.noise_variance)
-
-            
+                                noise_variance=FLAGS.noise_variance, 
+                                run_name=run_name)
 
     elif model_name == 'VGG16':
         if sum(where_bn)==0:
