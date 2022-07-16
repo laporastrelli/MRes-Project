@@ -1,6 +1,6 @@
 from absl.flags import FLAGS
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
@@ -15,7 +15,11 @@ def get_model(model_name, where_bn, run_name=''):
                 net = ResNet_v3.ResNet50(where_bn=where_bn)
             else:
                 print("Custom ResNet")
-                net = ResNet_v1.ResNet50(where_bn=where_bn)
+                if FLAGS.use_SkipInit:
+                    print('Training with SkipInit')
+                    net = ResNet_v1_SkipInit.ResNet50(where_bn=where_bn)
+                else:
+                    net = ResNet_v1.ResNet50(where_bn=where_bn)
         else:
             print('no BN')
             print(where_bn)

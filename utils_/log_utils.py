@@ -49,6 +49,11 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'rank_init/')
         csv_path_dir = csv_path_dir + 'rank_init/' 
     
+    if FLAGS.use_SkipInit:
+        if not os.path.isdir(csv_path_dir + 'use_SkipInit/'):
+            os.mkdir(csv_path_dir + 'use_SkipInit/')
+        csv_path_dir = csv_path_dir + 'use_SkipInit/'
+    
     # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
         if not os.path.isdir(csv_path_dir + 'channel_transfer/'):
@@ -72,7 +77,6 @@ def get_csv_path(model_name):
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
-    
     if FLAGS.test_frequency:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_' \

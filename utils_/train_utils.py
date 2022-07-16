@@ -72,6 +72,16 @@ def train (train_loader,
                 n_epochs = 150
                 grad_clip = False
                 scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+
+            elif FLAGS.use_SkipInit:
+                print('Using SkipInit with large Learning Rate ...')
+                lr_scheduler = optim.lr_scheduler.MultiStepLR
+                lr_ = 0.1
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 150
+                grad_clip = False
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+
             # option for partial (or none)-BN training
             else: 
                 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
@@ -259,6 +269,7 @@ def train (train_loader,
 
             if FLAGS.track_rank:
                 if i == 0:
+                    print(torch.transpose(model.last_layer, 0, 1).size())
                     rank = torch.matrix_rank(torch.transpose(model.last_layer, 0, 1))
                     
             loss = nn.CrossEntropyLoss()(yp,y)
