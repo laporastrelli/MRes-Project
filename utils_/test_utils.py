@@ -471,7 +471,7 @@ def channel_transfer(net,
                      num_iter,
                      attack='PGD',
                      channel_transfer='largest',
-                     transfer_mode='variance_based',
+                     transfer_mode='frequency_based',
                      layer_to_test=0,
                      use_pop_stats=True, 
                      noise_variance=0):
@@ -491,16 +491,22 @@ def channel_transfer(net,
 
     # get number of channels in layer
     # print(net.get_bn_parameters())
-    channel_size = net.get_bn_parameters()[layer_key[0]].size(0)
+    # channel_size = net.get_bn_parameters()[layer_key[0]].size(0)
+    channel_size = 64
 
     # get number of channels to transfer
     if channel_transfer in ['largest', 'smallest']: transfers = np.arange(9)
-    elif channel_transfer == 'individual': transfers = np.arange(0, channel_size, int(channel_size/64))
+    elif channel_transfer == 'individual': transfers = np.arange(0, channel_size, 9)
     print('Total number of channels to transfer: ', len(transfers))
 
     # create directory
-    dir_path = './results/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
-               + run_name.split('_')[0]  + '_' +  run_name.split('_')[1] + '/'  
+    if model_path.find('bitbucket')!= -1:
+        dir_path = './gpucluster/CIFAR10' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
+                + run_name.split('_')[0]  + '_' +  run_name.split('_')[1] + '/'
+    else:
+        dir_path = './results/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
+                + run_name.split('_')[0]  + '_' +  run_name.split('_')[1] + '/'
+      
     if not os.path.isdir(dir_path): os.mkdir(dir_path)
     dir_path += layer_key[0] + '/'
     if not os.path.isdir(dir_path): os.mkdir(dir_path)
@@ -510,7 +516,6 @@ def channel_transfer(net,
     # get min and max tensor
     min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
     
-
     for n_channels in transfers:
         print('channel IDX: ', n_channels)
         for eps in epsilon_list:
@@ -534,7 +539,7 @@ def channel_transfer(net,
                 curr_key = str(run_name + '_' + str(epsilon))
                 if curr_key in csv_dict.keys():
                     if (len(csv_dict[curr_key]) == 9 and channel_transfer in ['smallest', 'largest']) or \
-                        (len(csv_dict[curr_key]) == 64 and channel_transfer=='individual'): 
+                        (len(csv_dict[curr_key]) == 8 and channel_transfer=='individual'): 
                         print('------ KEY ALREADY FULL ------')
                         break
                 
@@ -562,6 +567,12 @@ def channel_transfer(net,
                 elif transfer_mode == 'lambda_based':
                     lambdas = net.get_bn_parameters()[layer_key[0]]
                     tmp_capacity_idx = torch.argsort(lambdas, descending=descending)
+                
+                elif transfer_mode == 'frequency_based':
+                    if model_path.find('bitbucket')!= -1:
+                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
+                    else:
+                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
 
                 # select channels (i.e. channels-corresponding channels) to transfer
                 if channel_transfer in ['smallest', 'largest']:
@@ -593,7 +604,7 @@ def channel_transfer(net,
                 correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
 
                 # save result 
-                if (channel_transfer in ['smallest', 'largest'] and i == 20) or (channel_transfer=='individual' and i == 6):
+                if (channel_transfer in ['smallest', 'largest'] and i == 20) or (channel_transfer=='individual' and i == 7):
                     if not os.path.isfile(fname):
                         csv_dict = {curr_key: [correct_s/correct_clean]}
                         np.save(fname, csv_dict)
