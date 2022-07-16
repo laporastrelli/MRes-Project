@@ -90,7 +90,7 @@ def main(argv):
 
     # carry out channel transfer only for full-BN configs
     if len(FLAGS.channel_transfer)>0:
-        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [1,5,100]: 
             already_exists = True
     if FLAGS.capacity_calculation:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
@@ -102,11 +102,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [2,3,4]: 
             already_exists = True
     if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
-<<<<<<< HEAD
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [1,5,100]: 
-=======
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0,1,2,3,4]: 
->>>>>>> 5352ff81797d3cb5d19bd5ec85ae7aecac90487a
             already_exists = True
 
     # save to results log if file not already saved

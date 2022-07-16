@@ -161,3 +161,6 @@ wandb/
 
 # Files
 scripts/schedule.txt
+data_jacopo_day.csv
+data_jacopo.csv
+jacopo.py
