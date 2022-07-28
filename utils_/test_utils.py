@@ -501,7 +501,7 @@ def channel_transfer(net,
 
     # create directory
     if model_path.find('bitbucket')!= -1:
-        dir_path = './gpucluster/CIFAR10' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
+        dir_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
                 + run_name.split('_')[0]  + '_' +  run_name.split('_')[1] + '/'
     else:
         dir_path = './results/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
@@ -570,9 +570,9 @@ def channel_transfer(net,
                 
                 elif transfer_mode == 'frequency_based':
                     if model_path.find('bitbucket')!= -1:
-                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
+                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
                     else:
-                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
+                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
 
                 # select channels (i.e. channels-corresponding channels) to transfer
                 if channel_transfer in ['smallest', 'largest']:
@@ -581,7 +581,10 @@ def channel_transfer(net,
                     else:
                         capacity_ch = tmp_capacity_idx[0].cpu().detach().numpy()
                 elif channel_transfer == 'individual':
-                    capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
+                    if transfer_mode == 'frequency_based':
+                        capacity_ch = tmp_capacity_idx[int(n_channels)]
+                    else:
+                        capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
 
                 capacity_activations = adv_activations[layer_key[0]][-1][:, capacity_ch, :, :]
                 # print(capacity_ch, int(layer_key[0][-1]), capacity_activations.shape)

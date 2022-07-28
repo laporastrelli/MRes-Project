@@ -1,6 +1,7 @@
 from absl.flags import FLAGS
+from matplotlib import use
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit, VGG_scaled, ResNet_v1_Scaling
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
@@ -15,11 +16,7 @@ def get_model(model_name, where_bn, run_name=''):
                 net = ResNet_v3.ResNet50(where_bn=where_bn)
             else:
                 print("Custom ResNet")
-                if FLAGS.use_SkipInit:
-                    print('Training with SkipInit')
-                    net = ResNet_v1_SkipInit.ResNet50(where_bn=where_bn)
-                else:
-                    net = ResNet_v1.ResNet50(where_bn=where_bn)
+                net = ResNet_v1.ResNet50(where_bn=where_bn, normalization=FLAGS.normalization)
         else:
             print('no BN')
             print(where_bn)
@@ -28,7 +25,13 @@ def get_model(model_name, where_bn, run_name=''):
             elif int(FLAGS.version) == 3:
                 net = ResNet_v3.ResNet50(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet50(where_bn=where_bn)
+                if FLAGS.use_SkipInit:
+                    print('Training with SkipInit')
+                    net = ResNet_v1_SkipInit.ResNet50(where_bn=where_bn)
+                if FLAGS.use_scaling:
+                    net = ResNet_v1_Scaling.ResNet50(where_bn=where_bn, use_scaling=True)
+                else:
+                    net = ResNet_v1.ResNet50(where_bn=where_bn)
         
         if FLAGS.capacity_regularization or FLAGS.rank_init or FLAGS.track_rank:
             print('Training/Testing with capacity regularization ...')
@@ -54,7 +57,10 @@ def get_model(model_name, where_bn, run_name=''):
 
     elif model_name == 'VGG19':
         if sum(where_bn)==0:
-            net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization)
+            if FLAGS.use_scaling:
+                net = VGG_scaled.vgg19(where_bn=where_bn, normalization=FLAGS.normalization, use_scaling=FLAGS.use_scaling)
+            else:
+                net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization)
         else:
             net = VGG.vgg19_bn(where_bn=where_bn, normalization=FLAGS.normalization)
 

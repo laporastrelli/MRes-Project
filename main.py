@@ -90,7 +90,7 @@ def main(argv):
 
     # carry out channel transfer only for full-BN configs
     if len(FLAGS.channel_transfer)>0:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [1,5,100]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0,2,3,4]: 
             already_exists = True
     if FLAGS.capacity_calculation:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 

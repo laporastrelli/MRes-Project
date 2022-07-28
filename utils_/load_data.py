@@ -21,6 +21,16 @@ def get_data():
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
+    
+    if FLAGS.train_with_GaussianBlurr:
+        transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),

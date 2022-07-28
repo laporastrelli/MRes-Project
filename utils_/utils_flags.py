@@ -76,6 +76,12 @@ flags.DEFINE_bool('track_rank', False, 'track rank of last layer activations dur
 
 flags.DEFINE_bool('use_SkipInit', False, 'initialize ResNet with SkipInit')
 
+flags.DEFINE_bool('train_small_lr', False, 'train models with BN with smaller LR than usual')
+
+flags.DEFINE_bool('train_with_GaussianBlurr', False, 'train model with Gaussian Blurring')
+
+flags.DEFINE_bool('use_scaling', False, 'train model with scale layer')
+
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')
 flags.DEFINE_string('attack', None, 'type of adversarial attack')

@@ -54,6 +54,26 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'use_SkipInit/')
         csv_path_dir = csv_path_dir + 'use_SkipInit/'
     
+    if FLAGS.normalization == 'ln':
+        if not os.path.isdir(csv_path_dir + 'train_ln/'):
+            os.mkdir(csv_path_dir + 'train_ln/')
+        csv_path_dir = csv_path_dir + 'train_ln/'
+    
+    if FLAGS.train_small_lr:
+        if not os.path.isdir(csv_path_dir + 'train_small_lr/'):
+            os.mkdir(csv_path_dir + 'train_small_lr/')
+        csv_path_dir = csv_path_dir + 'train_small_lr/'
+    
+    if FLAGS.train_with_GaussianBlurr:
+        if not os.path.isdir(csv_path_dir + 'train_with_GaussianBlurr/'):
+            os.mkdir(csv_path_dir + 'train_with_GaussianBlurr/')
+        csv_path_dir = csv_path_dir + 'train_with_GaussianBlurr/'
+    
+    if FLAGS.use_scaling:
+        if not os.path.isdir(csv_path_dir + 'use_scaling/'):
+            os.mkdir(csv_path_dir + 'use_scaling/')
+        csv_path_dir = csv_path_dir + 'use_scaling/'
+    
     # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
         if not os.path.isdir(csv_path_dir + 'channel_transfer/'):

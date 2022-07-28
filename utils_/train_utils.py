@@ -14,7 +14,6 @@ from utils_.miscellaneous import get_bn_layer_idx, entropy
 from torch import linalg as LA
 
 
-
 def train (train_loader, 
            val_loader, 
            model, 
@@ -68,6 +67,8 @@ def train (train_loader,
             if batch_norm and sum(FLAGS.where_bn)>1:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR
                 lr_ = 0.1
+                if  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
+                    lr_ = 0.001
                 opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
                 n_epochs = 150
                 grad_clip = False
@@ -163,6 +164,10 @@ def train (train_loader,
             weight_decay=5e-4
             grad_clip = False
             lr_ = 0.01
+            if FLAGS.normalization == 'ln':
+                lr_ = 0.005
+            elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
+                lr_ = 0.001
 
             if FLAGS.dataset == 'SVHN' and FLAGS.where_bn[4]==1 and sum(FLAGS.where_bn)==1:
                 lr_= 0.0075
