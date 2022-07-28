@@ -69,6 +69,9 @@ def main(argv):
 
     # define test run params
     if FLAGS.test_run: index, bn_string, test_acc, adv_accs, result_log = set_test_run()
+
+    if FLAGS.test_low_pass_robustness:
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:5]
     
     # dict selection based on mode
     if FLAGS.capacity_regularization:
@@ -88,23 +91,6 @@ def main(argv):
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
 
-    # carry out channel transfer only for full-BN configs
-    if len(FLAGS.channel_transfer)>0:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0,2,3,4]: 
-            already_exists = True
-    if FLAGS.capacity_calculation:
-        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
-            already_exists = True
-    if FLAGS.frequency_analysis:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
-            already_exists = True
-    if FLAGS.IB_noise_calculation:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [2,3,4]: 
-            already_exists = True
-    if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [1,5,100]: 
-            already_exists = True
-
     # save to results log if file not already saved
     if FLAGS.save_to_log:
         csv_path = get_csv_path(FLAGS.model_name)
@@ -115,6 +101,34 @@ def main(argv):
             else:
                 already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
             print('ALREAD EXISTS IN RESULTS LOG: ', already_exists)
+
+
+    # carry out channel transfer only for full-BN configs
+    if len(FLAGS.channel_transfer)>0:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
+            already_exists = True
+    if FLAGS.capacity_calculation:
+        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+            already_exists = True
+    if FLAGS.frequency_analysis:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+            already_exists = True
+    if FLAGS.IB_noise_calculation:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
+            already_exists = True
+    if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
+            already_exists = True
+    if FLAGS.compare_frequency_domain:
+        if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
+            already_exists = True
+    if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
+            already_exists = True 
+    if FLAGS.adversarial_test and FLAGS.attenuate_HF:
+        if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
+            already_exists = True
+
 
     # display model info
     if FLAGS.verbose:
@@ -198,6 +212,8 @@ def main(argv):
                         dict_name = attack + '-' + str(FLAGS.epsilon)
                         if FLAGS.capacity_calculation:
                             _ =  test(index, capacity_calculation=True)
+                        elif FLAGS.attenuate_HF:
+                            adv_accs[dict_name] = test(index, HF_attenuate=True)
                         else:
                             adv_accs[dict_name] = test(index, adversarial=True)
                         
@@ -206,7 +222,26 @@ def main(argv):
                         for eps in FLAGS.epsilon_in:
                             FLAGS.epsilon = float(eps)
                             dict_name = attack + '-' + str(FLAGS.epsilon)
-                            adv_accs[dict_name] = get_FAB_acc(index, attack)
+                            if attack == 'Square':
+                                adv_accs[dict_name] = test(index, square_attack=True)
+                            else:
+                                adv_accs[dict_name] = get_FAB_acc(index, attack)
+                                
+        if FLAGS.test_low_pass_robustness:
+            adv_accs = dict()
+            for attack in FLAGS.attacks_in:
+                FLAGS.attack = attack
+                if attack == 'PGD':
+                    for eps in FLAGS.epsilon_in:
+                        FLAGS.epsilon = float(eps)
+                        FLAGS.radii_to_test = [16, 15, 14, 13, 12, 11, 10]
+                        for radius in FLAGS.radii_to_test:
+                            FLAGS.low_pass_radius = int(radius)
+                            dict_name = attack + '-' + str(FLAGS.epsilon) + '-' + str(FLAGS.low_pass_radius)
+                            adv_accs[dict_name] = test(index, test_low_pass_robustness=True)
+
+        if FLAGS.compare_frequency_domain:
+            _ = test(index, compare_frequency_domain=True) 
 
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name
@@ -254,7 +289,8 @@ def main(argv):
                         columns_csv[6] : FLAGS.epsilon_in}
                 csv_dict.update(adv_accs)
 
-            elif len(result_log)>1 and not FLAGS.capacity_regularization:    
+            elif len(result_log)>1 and not FLAGS.capacity_regularization: 
+                # fill csv dictionaruìy based on different modes of training/testing   
                 csv_dict = dict()
                 for i, log in enumerate(result_log):
                     if i <=5:
@@ -268,8 +304,9 @@ def main(argv):
                     # csv_dict[columns_csv[6]] = int(FLAGS.frequency_radius)
                     # csv_dict[columns_csv[7]] = test_acc
                     csv_dict.update(freq_dict) 
-                if not FLAGS.adversarial_test:
+                if not FLAGS.adversarial_test and not FLAGS.test_low_pass_robustness: 
                     adv_accs = {}
+
                 csv_dict.update(adv_accs)    
             
             elif len(result_log)>1 and (FLAGS.capacity_regularization or FLAGS.rank_init):

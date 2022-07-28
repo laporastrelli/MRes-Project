@@ -1,4 +1,8 @@
 from os import stat
+from time import time
+from tkinter import Image
+from matplotlib import scale
+import numpy as np
 from tabnanny import verbose
 from cv2 import mean
 from numpy import int32
@@ -8,6 +12,7 @@ from torch.nn import functional as F
 from zmq import device
 import math
 import numbers
+import time
 
 from utils_ import utils_flags
 from absl import flags
@@ -34,6 +39,7 @@ class proxy_VGG3(nn.Module):
                  IB_noise_calculation=False,
                  get_parametric_frequency_MSE_only=False,
                  get_parametric_frequency_MSE_CE=False,
+                 attenuate_HF=False,
                  IB_noise_std=0, 
                  gaussian_std=[0*i for i in range(64)],
                  layer_to_test=0):
@@ -49,6 +55,8 @@ class proxy_VGG3(nn.Module):
         self.run_name = run_name
         self.get_running_var = False
         self.running_var = 0 
+
+        self.attenuate_HF = attenuate_HF
 
         self.bn_parameters = {}
         self.test_variance = {}
@@ -185,7 +193,6 @@ class proxy_VGG3(nn.Module):
                         x = x + noise.to(self.device)
                         self.noise_std.retain_grad()
                     
-                    ###########################################################################
                     if self.get_parametric_frequency_MSE_CE and self.layer_to_test==bn_count:
                         # construct channel-wise gaussian-based convolutional layer
                         self.ground_truth_activations = x.detach().clone()
@@ -202,10 +209,22 @@ class proxy_VGG3(nn.Module):
                         # apply batch norm
                         x = model(self.gaussian_activations)
 
+                    if self.attenuate_HF and bn_count == self.layer_to_test:
+                        # apply BN
+                        x = model(x)
+                        # create copy of BN-activated layer
+                        x_HF = x.clone()
+                        # transform activations to have attenuated HF 
+                        '''scale = model.weight.cpu().detach().numpy() / model.running_var.cpu().detach().numpy()
+                        tmp = self.HF_manipulation(x_HF.cpu().detach().numpy(), r=15, scale=scale)
+                        x = torch.tensor(tmp, dtype=torch.float32, device=self.device)'''
+                        scale = model.weight / model.running_var
+                        scale = torch.where(scale > 1, scale, torch.Tensor([1.]).to(self.device))
+                        # x = self.HF_manipulation(x_HF, r=15, scale=scale)
+
                     else:
                         x = model(x)
-                    ###########################################################################
-
+                    
                     bn_count += 1
                                 
                 else:
@@ -306,7 +325,75 @@ class proxy_VGG3(nn.Module):
         
         return bn_locations
     
+    def distance(self, i, j, imageSize, r):
+        dis = np.sqrt((i - imageSize/2) ** 2 + (j - imageSize/2) ** 2)
+        if dis < r:
+            return 1.0
+        else:
+            return 0
+
+    def mask_radial(self, img, r):
+        rows, cols = img.shape
+        mask = np.zeros((rows, cols))
+        for i in range(rows):
+            for j in range(cols):
+                mask[i, j] = self.distance(i, j, imageSize=rows, r=r)
+        return mask
+
+    def fft(self, img):
+        return torch.fft.fft2(img)
+
+    def fftshift(self, img):
+        return torch.fft.fftshift(self.fft(img))
+
+    def ifft(self, img):
+        return torch.fft.ifft2(img)
+
+    def ifftshift(self, img):
+        return self.ifft(torch.fft.ifftshift(img))
     
+    def scaled_distance(self, i, j, imageSize, r, scale=1):
+        dis = np.sqrt((i - imageSize/2) ** 2 + (j - imageSize/2) ** 2)
+        if dis < r:
+            return 0.0
+        else:
+            if scale > 1.0:
+                return 1/scale
+            else:
+                return 1.0
+
+    def scaled_mask_radial(self, img, r, scale):
+        # first create location-based mask based on distance from the center of the image
+        mask =  torch.zeros_like(img[0, 0, :, :])
+        for i in range(img.size(2)):
+            for j in range(img.size(3)):
+                mask[i, j] = self.scaled_distance(i, j, imageSize=img.size(2), r=r, scale=1)
+        
+        # reshape mask to have the same dimension as img
+        mask = mask.view(1, 1, mask.size(0), mask.size(1)).expand(img.size())
+        scaling = scale.view(1,-1, 1, 1).expand(img.size())
+
+        # scale mask based on 0/1 value
+        scaled_mask = mask*(1/scaling)
+        scaled_mask = scaled_mask + torch.where(scaled_mask == 0, 1., 0.)
+
+        return scaled_mask
+    
+    def HF_manipulation(self, Images, r, scale):
+        # apply FFT
+        fd = self.fftshift(Images)
+        #### TEST ####
+        #print(torch.equal(fd[0, 0, :, :], self.fftshift(Images[0, 0, :, :])))
+        # get mask and apply it
+        mask = self.scaled_mask_radial(Images, r, scale)
+        fd = fd * mask
+
+        # apply IFFT
+        img = self.ifftshift(fd)
+
+        return torch.real(img)
+
+
 class GaussianSmoothing(nn.Module):
     """
     Apply gaussian smoothing on a
@@ -377,3 +464,22 @@ class GaussianSmoothing(nn.Module):
             filtered (torch.Tensor): Filtered output.
         """
         return self.conv(input, weight=self.weight, groups=self.groups)
+
+
+'''Images_freq_low = []
+for i in range(Images.size(0)):
+    tmp = np.zeros([Images.shape[1], Images.shape[2], Images.shape[3]])
+    for j in range(Images.shape[1]):
+        timestamp1 = time.time()
+        mask = self.scaled_mask_radial(np.zeros([Images.shape[2], Images.shape[3]]), r, scale[j])
+        fd = self.fftshift(Images[i, j, :, :])
+        timestamp2 = time.time()
+        #print('time elapsed 1: ', timestamp2 - timestamp1)
+        scaled_fd = fd * mask
+        img_low = self.ifftshift(scaled_fd)
+        timestamp3 = time.time()
+        #print('time elapsed 2: ', timestamp3 - timestamp2)
+        tmp[j,:,:] = np.real(img_low)
+    Images_freq_low.append(tmp)
+
+return np.array(Images_freq_low)'''

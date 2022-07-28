@@ -157,6 +157,7 @@ entropy_analysis/
 runnables/
 gpucluster/
 wandb/
+z_jacopo/
 
 
 # Files

@@ -36,7 +36,11 @@ def test(run_name,
          frequency_analysis=False, 
          IB_noise_calculation=False, 
          test_frequency=False,
-         parametric_frequency=False):
+         parametric_frequency=False, 
+         test_low_pass_robustness=False, 
+         compare_frequency_domain=False, 
+         square_attack=False, 
+         HF_attenuate=False):
 
     FLAGS = flags.FLAGS
 
@@ -47,7 +51,6 @@ def test(run_name,
     net = get_model(model_name, where_bn)
     PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     
-    # test model (standard)
     if standard:
         test_acc = test_utils.test(net, 
                                    PATH_to_model, 
@@ -59,6 +62,8 @@ def test(run_name,
                                    noise_variance=FLAGS.noise_variance, 
                                    random_resizing=FLAGS.random_resizing,
                                    noise_capacity_constraint=FLAGS.noise_capacity_constraint,
+                                   attenuate_HF=FLAGS.attenuate_HF,
+                                   layer_to_test=FLAGS.layer_to_test,
                                    capacity=FLAGS.capacity,
                                    get_logits=FLAGS.get_logits)
         outputs.append(test_acc)
@@ -74,7 +79,6 @@ def test(run_name,
                                             frequency_radius=int(FLAGS.frequency_radius))
         outputs.append(test_acc)
     
-    # get saliency map of largest logit with respect to a given layer activation
     elif get_saliency_map:
         test_utils.saliency_map(net, 
                                 PATH_to_model, 
@@ -83,7 +87,6 @@ def test(run_name,
                                 run_name=run_name,
                                 eval_mode=FLAGS.use_pop_stats)
     
-    # get features of specific layers in the model
     elif get_features:
         layer_outputs = test_utils.get_layer_output(net, 
                                                     PATH_to_model, 
@@ -104,12 +107,11 @@ def test(run_name,
         # reset adversarial to default to prevent from entering next if statement
         adversarial = False
 
-    # test model (adversarial)
     elif adversarial:
         print('Adversarial attack used: ', FLAGS.attack)
         print('Epsilon Budget: ', FLAGS.epsilon)
 
-        PATH_to_deltas = FLAGS.root_path + '/deltas/'
+        PATH_to_deltas = FLAGS.root_path + '/deltas_new/'
         adv_test_acc = test_utils.adversarial_test(net, 
                                                    PATH_to_model, 
                                                    model_name, 
@@ -140,7 +142,6 @@ def test(run_name,
         
         outputs.append(adv_test_acc)
     
-    # calculate capacity mode
     elif capacity_calculation:
         _ = test_utils.calculate_capacity(net, 
                                          PATH_to_model,
@@ -155,7 +156,6 @@ def test(run_name,
                                          regularization_mode=FLAGS.regularization_mode,
                                          beta=FLAGS.beta)
 
-    # channel transfer mode
     elif channel_transfer:
         _ = test_utils.channel_transfer(net, 
                                         PATH_to_model,
@@ -170,7 +170,6 @@ def test(run_name,
                                         layer_to_test=FLAGS.layer_to_test,
                                         use_pop_stats=FLAGS.use_pop_stats)
     
-    # frequency analysis
     elif frequency_analysis:
         test_utils.get_frequency_images(net,
                                         PATH_to_model,
@@ -202,6 +201,52 @@ def test(run_name,
                                             get_parametric_frequency_MSE_only=FLAGS.parametric_frequency_MSE,
                                             get_parametric_frequency_MSE_CE=FLAGS.parametric_frequency_MSE_CE,
                                             capacity_regularization=FLAGS.capacity_regularization)
+    
+    elif test_low_pass_robustness:
+        PATH_to_deltas = FLAGS.root_path + '/deltas_new/'
+        low_f_rob = test_utils.test_low_pass_robustness(net, 
+                                                      PATH_to_model,
+                                                      model_name, 
+                                                      PATH_to_deltas,
+                                                      test_loader,
+                                                      device,
+                                                      run_name, 
+                                                      attack=FLAGS.attack, 
+                                                      epsilon=FLAGS.epsilon, 
+                                                      num_iter=FLAGS.PGD_iterations,
+                                                      radius=FLAGS.low_pass_radius,
+                                                      eval_mode=FLAGS.use_pop_stats)
+        outputs.append(low_f_rob)
+
+    elif compare_frequency_domain:
+        test_utils.compare_frequency_domain(net, 
+                                            PATH_to_model, 
+                                            test_loader,
+                                            device,
+                                            run_name, 
+                                            layer_to_test=FLAGS.layer_to_test)
+
+    elif square_attack:
+        sa_acc = test_utils.test_SquareAttack(net, 
+                                              PATH_to_model, 
+                                              test_loader,
+                                              device,
+                                              run_name, 
+                                              epsilon=FLAGS.epsilon)
+        outputs.append(sa_acc)
+
+    elif HF_attenuate:
+        HF_acc = test_utils.HF_attenuate(net, 
+                                         PATH_to_model, 
+                                         test_loader,
+                                         device,
+                                         run_name,
+                                         epsilon=FLAGS.epsilon, 
+                                         num_iter=FLAGS.PGD_iterations,
+                                         layer_to_test=FLAGS.layer_to_test,
+                                         attenuate_HF=FLAGS.attenuate_HF)
+
+        outputs.append(HF_acc)
 
     if len(outputs) == 1:
         return outputs[0]
