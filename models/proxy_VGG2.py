@@ -43,12 +43,14 @@ class proxy_VGG2(nn.Module):
         
         self.bn_parameters = {}
         self.test_variance = {}
+        self.running_variances = {}
 
         ############################
         self.conv = net.features[0]
         self.bn = net.features[1]
         self.activation = net.features[2]
         features = list(net.features[3:])
+        features_all = list(net.features)
         ############################
 
         ############################
@@ -61,6 +63,7 @@ class proxy_VGG2(nn.Module):
         if eval_mode:
             net.eval()
             self.features = nn.ModuleList(features).eval()
+            self.features_all = nn.ModuleList(features_all).eval()
             self.avgpool = net.avgpool.eval()
             self.classifier = net.classifier.eval()
         else:
@@ -72,7 +75,7 @@ class proxy_VGG2(nn.Module):
     def forward(self, x, ch_activation=[], saliency_layer=''):
         bn_count = 0
 
-        self.conv1 = self.conv(x)
+        self.conv1 = self.conv(x)            
         self.bn1 = self.bn(self.conv1)
         if self.saliency_map:
             self.bn1.retain_grad()
@@ -111,6 +114,22 @@ class proxy_VGG2(nn.Module):
         out = self.classifier(x)
 
         return out
+    
+    def get_bn_parameters(self, get_variance=False):
+        bn_count = 0
+        for ii, model in enumerate(self.features_all):
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features_all[ii-1], torch.nn.modules.conv.Conv2d), \
+                       "Previous module should be Conv2d"
+                self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
+                if get_variance:
+                    self.running_variances['BN_' + str(bn_count)] = model.running_var.cpu().detach()
+                bn_count +=1
+        return self.bn_parameters
+    
+    def get_running_variance(self):
+        self.get_bn_parameters(get_variance=True)
+        return self.running_variances
 
     def get_capacity(self):
         return self.capacity
@@ -130,4 +149,6 @@ class proxy_VGG2(nn.Module):
 
     def set_verbose(self, verbose):
         self.verbose = verbose
+    
+    
     

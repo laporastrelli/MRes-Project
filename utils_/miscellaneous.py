@@ -28,23 +28,29 @@ def get_minmax(test_loader, device):
 def get_path2delta(PATH_to_deltas_,
                    model_tag, 
                    run_name, 
-                   attack):
-                   
-    PATH_to_deltas = PATH_to_deltas_ + model_tag
+                   attack, 
+                   epsilon):
+    
+    # create delta model-type folder if not existent
+    PATH_to_deltas = PATH_to_deltas_ + '/' + model_tag + '/'
     if not os.path.isdir(PATH_to_deltas):
         os.mkdir(PATH_to_deltas)
     
     # create delta model-run folder if not existent
-    if not os.path.isdir(PATH_to_deltas + '/' + run_name):
-        os.mkdir(PATH_to_deltas + '/' + run_name )
+    PATH_to_deltas +=  run_name + '/'
+    if not os.path.isdir(PATH_to_deltas):
+        os.mkdir(PATH_to_deltas)
 
     # create delta model-run folder if not existent
-    if not os.path.isdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/'):
-        os.mkdir(PATH_to_deltas + '/' + run_name + '/' + attack + '/')
-
-    path = PATH_to_deltas + '/' + run_name + '/' + attack + '/'
+    PATH_to_deltas += attack + '/'
+    if not os.path.isdir(PATH_to_deltas):
+        os.mkdir(PATH_to_deltas)
     
-    return path
+    PATH_to_deltas += 'eps_' + str(epsilon).replace('.', '') + '/'
+    if not os.path.isdir(PATH_to_deltas):
+        os.mkdir(PATH_to_deltas)
+    
+    return PATH_to_deltas
 
 def get_model_path(root_path, model_name, run_name):
     PATH_to_model = root_path + '/models/' + model_name + '/' + run_name + '.pth'

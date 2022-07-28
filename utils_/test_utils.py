@@ -1,4 +1,5 @@
 from pdb import runcall
+from sqlite3 import Timestamp
 from tkinter.tix import Tree
 from bleach import clean
 import torch.nn as nn
@@ -9,6 +10,8 @@ import numpy as np
 import random
 import pickle
 import matplotlib.pyplot as plt
+import seaborn as sns
+import time
 
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
@@ -18,6 +21,7 @@ from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_nam
 from utils_.log_utils import get_csv_path, get_csv_keys
 
 from advertorch.attacks import LinfPGDAttack
+from autoattack import AutoAttack
 
 from models.proxy_VGG import proxy_VGG
 from models.proxy_VGG2 import proxy_VGG2
@@ -77,6 +81,8 @@ def test(net,
         noise_variance=0, 
         random_resizing=False, 
         noise_capacity_constraint=False,
+        attenuate_HF=False,
+        layer_to_test=0,
         capacity=0,
         get_logits=False):
 
@@ -107,6 +113,17 @@ def test(net,
                                      device=device,
                                      run_name=run_name,
                                      noise_variance=noise_variance)
+
+    if attenuate_HF:
+        print('Testing Model w/ HF attenuation ...')
+        if run_name.find('VGG')!= -1:
+            net = proxy_VGG3(net, 
+                             eval_mode=eval_mode,
+                             device=device,
+                             run_name=run_name,
+                             noise_variance=0, 
+                             attenuate_HF=attenuate_HF,
+                             layer_to_test=int(layer_to_test))
 
     if eval_mode:
         net.eval()
@@ -227,7 +244,10 @@ def test(net,
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_correct_' + str(i) + '.npy', np.asarray(logits_diff_correct))
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_incorrect_' + str(i) + '.npy', np.asarray(logits_diff_incorrect))
         if not inject_noise:
+            timestamp1 = time.time()
             outputs = net(X)
+            timestamp2 = time.time()
+            #print('time elapsed for single forward pass: ', timestamp2 - timestamp1)
 
         _, predicted = torch.max(outputs.data, 1)
 
@@ -569,10 +589,12 @@ def channel_transfer(net,
                     tmp_capacity_idx = torch.argsort(lambdas, descending=descending)
                 
                 elif transfer_mode == 'frequency_based':
+                    print('------------------------------------------------------')
+                    print(os.getcwd())
                     if model_path.find('bitbucket')!= -1:
-                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
+                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
                     else:
-                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/frequency_ordered_channels.npy')
+                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
 
                 # select channels (i.e. channels-corresponding channels) to transfer
                 if channel_transfer in ['smallest', 'largest']:
@@ -581,7 +603,10 @@ def channel_transfer(net,
                     else:
                         capacity_ch = tmp_capacity_idx[0].cpu().detach().numpy()
                 elif channel_transfer == 'individual':
-                    capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
+                    if transfer_mode == 'frequency_based':
+                        capacity_ch = tmp_capacity_idx[int(n_channels)]
+                    else:
+                        capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
 
                 capacity_activations = adv_activations[layer_key[0]][-1][:, capacity_ch, :, :]
                 # print(capacity_ch, int(layer_key[0][-1]), capacity_activations.shape)
@@ -1487,6 +1512,13 @@ def distance(i, j, imageSize, r):
     else:
         return 0
 
+def distance_bigger(i, j, imageSize, r):
+    dis = np.sqrt((i - imageSize/2) ** 2 + (j - imageSize/2) ** 2)
+    if dis > r:
+        return 1.0
+    else:
+        return 0
+
 def get_cut_off_value(fft_img, percentage):
     temp = fft_img.flatten()
     ordered_temp = temp[::-1].sort()
@@ -1538,6 +1570,39 @@ def generateDataWithDifferentFrequencies_3Channel(Images, r):
         Images_freq_high.append(tmp)
 
     return np.array(Images_freq_low), np.array(Images_freq_high)
+
+def get_frequency_components(Images, r):
+    '''
+    frequency component for activations
+    '''
+    frequency_component_low = []
+    frequency_component_high = []
+    mask = mask_radial(np.zeros([Images.shape[2], Images.shape[3]]), r)
+    for i in range(Images.shape[0]):
+        tmp = np.zeros([Images.shape[0], Images.shape[2], Images.shape[3]])
+        for j in range(Images.shape[1]):
+            fd = fftshift(Images[i, j, :, :])
+            fd = fd * mask
+            tmp[j,:,:] = np.real(fd)
+        frequency_component_low.append(tmp)
+        tmp = np.zeros([Images.shape[0], Images.shape[2], Images.shape[3]])
+        for j in range(Images.shape[1]):
+            fd = fftshift(Images[i, j, :, :])
+            fd = fd * (1 - mask)
+            tmp[j,:,:] = np.real(fd)
+        frequency_component_high.append(tmp)
+    
+    return frequency_component_low, frequency_component_high
+
+def get_flattend_frequency_components(frequency_image, r):
+    rows, cols = frequency_image.shape
+    flattened_frequency_seq = []
+    for i in range(rows):
+        for j in range(cols):
+            if distance_bigger(i, j, imageSize=rows, r=r) > 0:
+                flattened_frequency_seq.append(frequency_image[i, j])
+
+    return flattened_frequency_seq
 
 def mse_error(input1, input2):
     return((input1 - input2)**2).mean()
@@ -1896,6 +1961,7 @@ def IB_noise_calculation(model,
     
     # create path
     if model_path.find('bitbucket') != -1:
+        print(model_path)
         root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
     else:
         root_path = './results/' + get_model_name(run_name) + '/'
@@ -2126,7 +2192,7 @@ def get_parametric_frequency(model,
     if get_parametric_frequency_MSE_only: lr = 0.1
     elif get_parametric_frequency_MSE_CE: lr = 0.05
     beta_mse = 1
-    iterations = 100
+    iterations = 20
 
     accs = []
 
@@ -2162,6 +2228,7 @@ def get_parametric_frequency(model,
                     total = y.size(0)
                     correct = (predicted == y).sum().item()
                     accs.append(correct/total)
+                    print('ITERATION: ', j)
                     print('Accuracy: ', correct/total)
 
                 
@@ -2172,7 +2239,7 @@ def get_parametric_frequency(model,
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
                 else:
-                    if model_path.find('bitbucket'):
+                    if model_path.find('bitbucket')!=-1:
                         sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
                     else:
                         sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
@@ -2242,7 +2309,7 @@ def get_parametric_frequency(model,
     
     # else we save it in the given order
     else: 
-        if model_path.find('bitbucket'):
+        if model_path.find('bitbucket')!=-1:
             sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
         else:
             sorted_lambdas = np.load('./results/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
@@ -2252,4 +2319,403 @@ def get_parametric_frequency(model,
     np.save(root_path + 'ordered_channel_noise_variance.npy', np.array(ordered_noise_std.cpu().detach()))
     np.save(root_path + 'frequency_ordered_channels.npy', np.array(frequency_ordered_channels.cpu().detach()))
     
+def test_low_pass_robustness(model, 
+                             model_path, 
+                             model_tag,
+                             PATH_to_deltas_,
+                             test_loader, 
+                             device, 
+                             run_name,
+                             attack,
+                             epsilon,
+                             num_iter,
+                             radius,
+                             eval_mode=True):
 
+    print('Epsilon: ', epsilon)
+    print('Radius:', radius)
+
+    # load model
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.to(device)     
+    
+    # set eval mode
+    if eval_mode: model.eval()
+    if run_name.find('VGG')!= -1: model.classifier.eval()
+    
+    # getting min and max pixel values to be used in PGD for clamping
+    min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+
+    # helper variables
+    total = 0
+    correct_s = 0
+    correct_clean = 0
+
+    for i, data in enumerate(test_loader, 0):
+        X, y = data
+        X, y = X.to(device), y.to(device)
+
+        # get path to existing perturbations
+        path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack, epsilon)
+
+        # perform PGD if not existent already
+        name_out = 'adversarial_delta_' + str(i) + '.pth'
+        
+        if not os.path.isfile(path + name_out):
+            # perform PGD
+            delta = pgd_linf(model, 
+                             X, 
+                             y, 
+                             epsilon, 
+                             max_tensor, 
+                             min_tensor,
+                             alpha=epsilon/10, 
+                             num_iter=num_iter, 
+                             noise_injection=False) 
+
+            # save perturbations
+            torch.save(delta[0], path + name_out)
+            # create adversarial examples
+            adv_inputs = X + delta[0]
+            input = adv_inputs
+
+        else:
+            delta = torch.load(path + name_out)
+            if radius < 16:
+                low_f_img, _ = generateDataWithDifferentFrequencies_3Channel(delta.cpu().numpy(), radius)
+                low_f_img = torch.tensor(low_f_img, dtype=torch.float32, device=device)
+                input = X + low_f_img
+            else:
+                input = X + delta
+                
+        with torch.no_grad():
+            outputs_clean = model(X)
+            outputs = model(input)
+            
+        _, predicted_clean = torch.max(outputs_clean.data, 1)
+        _, predicted = torch.max(outputs.data, 1)
+        
+        #print('clean ------------------------------: ', (predicted_clean == y).sum().item())
+        #print('adversarial ------------------------------: ', (predicted == y).sum().item())
+
+        total += y.size(0)
+        correct_clean += (predicted_clean == y).sum().item()
+        correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+
+    print(correct_s/total)
+
+    return correct_s/total
+
+def compare_frequency_domain(model, 
+                             model_path, 
+                             test_loader, 
+                             device, 
+                             run_name,
+                             eval_mode=True, 
+                             layer_to_test=0, 
+                             get_HF_difference=False, 
+                             layer_wise_analysis=False):
+    
+    # load model
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.to(device)
+
+    print('LAYER TO TEST: ', layer_to_test)
+
+    # initiate model
+    if run_name.find('VGG')!= -1:
+        model = proxy_VGG2(model, 
+                           eval_mode=eval_mode,
+                           device=device,
+                           noise_variance=0,
+                           run_name=run_name)
+
+        
+    elif run_name.find('ResNet')!= -1:
+        model = proxy_ResNet(model, 
+                             eval_mode=eval_mode,
+                             device=device,
+                             run_name=run_name,
+                             noise_variance=0, 
+                             layer_to_test=int(layer_to_test))
+    
+     # set eval mode for inference 
+    if eval_mode: model.eval()
+
+    # create path
+    if model_path.find('bitbucket') != -1:
+        root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
+    else:
+        root_path = './results/' + get_model_name(run_name) + '/'
+
+    if eval_mode: root_path += 'eval/'
+    else: root_path += 'no_eval/' 
+    
+    root_path += 'PGD' + '/' 
+    if not os.path.isdir(root_path): os.mkdir(root_path)
+
+    root_path += 'frequency_domain_comparison' + '/' 
+    if not os.path.isdir(root_path): os.mkdir(root_path)
+
+    root_path += run_name + '/'
+    if not os.path.isdir(root_path): os.mkdir(root_path)
+
+    if layer_wise_analysis:
+
+        root_path += 'layer_' + str(layer_to_test) + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
+        # retrieve batch from loader
+        X, y = next(iter(test_loader))
+        X, y = X.to(device), y.to(device) 
+
+        _ = model(X)
+        
+        # get activations from each of the 64 channels BEFORE and AFTER BN  
+        before_bn = model.conv1.cpu().detach()
+        after_bn = model.bn1.cpu().detach()
+
+        # compute fft
+        _, high_f_before = get_frequency_components(before_bn.numpy(), r=15)    
+        _, high_f_after = get_frequency_components(after_bn.numpy(), r=15)
+
+        if layer_to_test == 0:
+            if run_name.find('VGG')!= -1:
+                lambdas = model.bn.weight.detach()
+            elif run_name.find('ResNet')!= -1:
+                lambdas = model.net.bn1.weight.detach()
+        else:
+            if run_name.find('VGG')!= -1:
+                lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].detach()
+                
+            elif run_name.find('ResNet')!= -1:
+                lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].detach()
+                running_variances = model.get_running_variance()['BN_' + str(layer_to_test)].detach()
+
+        sorted_lambdas = torch.argsort(lambdas, descending=True)
+
+        # save std layer distribution
+        sns.displot(data=torch.sqrt(running_variances).cpu().numpy(), kind="kde")
+        plt.savefig(root_path + 'std_layer_distribution.png')
+        plt.close() 
+
+        print(lambdas[sorted_lambdas].cpu().detach().numpy())
+
+        # save lambda-std ratio ordered by lambda
+        fig = plt.figure()
+        plt.scatter(sorted_lambdas.cpu().detach().numpy(), \
+            lambdas[sorted_lambdas].cpu().detach().numpy()/np.sqrt(running_variances[sorted_lambdas].cpu().detach().numpy()))
+        plt.hlines(y=1, xmin=0, xmax=torch.max(sorted_lambdas).cpu().numpy(), color='red', linestyle ='dashed', linewidth = 2)
+        plt.xlabel('Sorted ' + r'$\lambda$' + ' indexes')
+        plt.ylabel(r'$\lambda - \sigma $' + ' ratio')
+        plt.title('BatchNorm Net Scaling comparison with ' + r'$\lambda$')
+        plt.savefig(root_path + 'BN_scaling_vs_lambda.png')
+        plt.close()
+
+        if get_HF_difference:
+            for i, sample in enumerate(X):
+                print(i)
+                if i > 10: break
+                path = root_path + 'img_' + str(i) + '/'
+                if not os.path.isdir(path): os.mkdir(path)
+
+                lamda_var_ratio = []
+                var_before_and_after_ratio = []
+                mean_before_and_after_ratio = []
+
+                for num, j in enumerate(sorted_lambdas):
+                    
+                    if layer_to_test == 0:
+                        if run_name.find('VGG')!= -1:
+                            lamda_var_ratio.append(lambdas[j].cpu().detach().numpy()/np.sqrt(model.bn.running_var[j].cpu().detach().numpy()))
+                        elif run_name.find('ResNet')!= -1:
+                            lamda_var_ratio.append(lambdas[j].cpu().detach().numpy()/np.sqrt(model.net.bn1.running_var[j].cpu().detach().numpy()))
+                    
+                        frequency_activations_before = high_f_before[i]
+                        frequency_activations_after = high_f_after[i]
+
+                        path_out = path + 'ch_' + str(int(num)) + '/'
+                        if not os.path.isdir(path_out): os.mkdir(path_out)
+
+                        fig, (ax1, ax2) = plt.subplots(figsize=(10, 3), ncols=2)
+
+                        ax1.set_axis_off()
+                        im = ax1.imshow(frequency_activations_before[j, :, :], cmap='viridis')
+                        
+                        ax2.set_axis_off()
+                        im = ax2.imshow(frequency_activations_after[j, :, :], cmap='viridis')
+                    
+                        fig.subplots_adjust(right=0.8)
+                        fig.colorbar(im, ax=[ax1, ax2], shrink=0.95)
+                        fig.savefig(path_out + 'frequency_component_comparison.png')
+                        plt.close()
+
+                        temp_before = get_flattend_frequency_components(frequency_activations_before[j, :, :], r=15)
+                        temp_after = get_flattend_frequency_components(frequency_activations_after[j, :, :], r=15)
+                        temp_dict = {'Before BN': temp_before, 'After BN': temp_after}
+                        sns.displot(data=temp_dict, kind="kde")
+                        plt.savefig(path_out + 'distribution.png')
+                        plt.close()
+
+                        var_before_and_after_ratio.append(np.var(temp_after)/np.var(temp_before))
+                        mean_before_and_after_ratio.append(np.mean(np.abs(temp_after))/np.mean(np.abs(temp_before)))
+
+                    else:
+                        if run_name.find('VGG')!= -1:
+                            lamda_var_ratio.append(lambdas[j].cpu().detach().numpy()/np.sqrt(running_variances[j].cpu().detach().numpy()))
+                        elif run_name.find('ResNet')!= -1:
+                            lamda_var_ratio.append(lambdas[j].cpu().detach().numpy()/np.sqrt(running_variances[j].cpu().detach().numpy()))
+
+                if layer_to_test == 0:
+                    fig = plt.figure()
+                    plt.scatter(lamda_var_ratio, var_before_and_after_ratio)
+                    plt.hlines(y=1, xmin=np.min(lamda_var_ratio), xmax=np.max(lamda_var_ratio), color='red', linestyle ='dashed', linewidth = 2)
+                    plt.xlabel(r'$\lambda - \sigma $' + ' ratio')
+                    plt.ylabel('Variance Ratio (After-Before) of HF')
+                    plt.title('BatchNorm parameters comparison to HF behaviour')
+                    fig.savefig(path + 'BN_params_vs_HF.png')
+                    plt.close()
+
+                    fig = plt.figure()
+                    plt.scatter(lamda_var_ratio, mean_before_and_after_ratio)
+                    plt.hlines(y=1, xmin=np.min(lamda_var_ratio), xmax=np.max(lamda_var_ratio), color='red', linestyle ='dashed', linewidth = 2)
+                    plt.xlabel(r'$\lambda - \sigma $' + ' ratio')
+                    plt.ylabel('Mean Ratio (After-Before) of HF')
+                    plt.title('BatchNorm parameters comparison to HF behaviour')
+                    fig.savefig(path + 'BN_params_vs_HF_mean.png')
+                    plt.close()
+
+                fig = plt.figure()
+                to_plot = [lamda_var_ratio[i] for i in sorted_lambdas.cpu().detach().numpy()]
+                plt.scatter(sorted_lambdas.cpu().detach().numpy(), to_plot)
+                plt.hlines(y=1, xmin=0, xmax=np.max(sorted_lambdas.cpu().detach().numpy()), color='red', linestyle ='dashed', linewidth = 2)
+                plt.xlabel('Sorted ' + r'$\lambda$' + ' indexes')
+                plt.ylabel(r'$\lambda - \sigma $' + ' ratio')
+                plt.title('BatchNorm Net Scaling comparison with ' + r'$\lambda$')
+                fig.savefig(path + 'BN_scaling_vs_lambda.png')
+                plt.close()
+
+    else:
+        root_path += 'layers_scaling' + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+        lambdas = model.get_bn_parameters()
+        running_variances = model.get_running_variance()
+        np.save(root_path + 'lambdas.npy', lambdas)
+        np.save(root_path + 'running_variances.npy', running_variances)
+
+def test_SquareAttack(model, 
+                      model_path, 
+                      test_loader, 
+                      device, 
+                      run_name,
+                      epsilon,
+                      eval_mode=True):
+    # load model
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.to(device)
+
+    # set eval mode for inference 
+    if eval_mode: model.eval()
+
+    # getting min and max pixel values to be used in PGD for clamping
+    min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+
+    version = 'custom'
+    adversary = AutoAttack(model, 
+                           norm='Linf', 
+                           eps=epsilon, 
+                           version=version,
+                           device=device,
+                           verbose=False,
+                           min_tensor=min_tensor, 
+                           max_tensor=max_tensor)
+
+    adversary.attacks_to_run = ['square']
+
+    total = 0
+    correct_s = 0
+    for _, data in enumerate(test_loader, 0):
+        X, y = data
+        X, y = X.to(device), y.to(device)
+
+        advimg = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), 
+                 bs=X.size(0))
+        
+        outputs = model(advimg)
+        outputs_clean = model(X)
+
+        _, predicted_clean = torch.max(outputs_clean.data, 1)
+        _, predicted = torch.max(outputs.data, 1)
+
+        print('adversarial ------------------------------: ', (predicted == y).sum().item())
+
+        total += y.size(0)
+        correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+
+    return correct_s/total
+
+def HF_attenuate(model, 
+                 model_path, 
+                 test_loader, 
+                 device, 
+                 run_name,
+                 epsilon,
+                 num_iter,
+                 radius=15,
+                 layer_to_test=0,
+                 attenuate_HF=True,
+                 eval_mode=True):
+
+     # load model
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.to(device)       
+
+    # initiate model
+    if run_name.find('VGG')!= -1:
+        model = proxy_VGG3(model, 
+                           eval_mode=eval_mode,
+                           device=device,
+                           run_name=run_name,
+                           noise_variance=0, 
+                           attenuate_HF=attenuate_HF,
+                           layer_to_test=int(layer_to_test))
+
+    # set eval mode
+    if eval_mode: model.eval()
+    if run_name.find('VGG')!= -1:
+        model.classifier.eval()
+    
+    # getting min and max pixel values to be used in PGD for clamping
+    min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+
+    # helper variables
+    correct_s = 0
+    total = 0
+
+    for i, data in enumerate(test_loader, 0):
+        X, y = data
+        X, y = X.to(device), y.to(device)
+
+        delta = pgd_linf(model, 
+                         X, 
+                         y, 
+                         epsilon, 
+                         max_tensor, 
+                         min_tensor,
+                         alpha=epsilon/10, 
+                         num_iter=num_iter)
+        
+        adv_inputs = X + delta[0]
+
+        outputs = model(adv_inputs)
+        outputs_clean = model(X)
+
+        _, predicted_clean = torch.max(outputs_clean.data, 1)
+        _, predicted = torch.max(outputs.data, 1)
+
+        total += y.size(0)
+        correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+    
+    return correct_s/total
+
+    

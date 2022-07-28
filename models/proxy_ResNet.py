@@ -52,6 +52,7 @@ class proxy_ResNet(nn.Module):
 
         ############################
         self.bn1 = 0
+        self.conv1 = 0
         ############################
 
         print(self.net)
@@ -187,6 +188,7 @@ class proxy_ResNet(nn.Module):
         bn_count = 0
         # first conv layer 
         x = self.net.conv1(x)
+        self.conv1 = x.detach().clone()
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
@@ -273,6 +275,7 @@ class proxy_ResNet(nn.Module):
                             bn_count += 1
                         temp = shortcut_layer(temp)
                 x = x + temp
+                
                 x = block.activation_fn(x)
         
         x = F.avg_pool2d(x, 4)

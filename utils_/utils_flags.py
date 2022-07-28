@@ -22,7 +22,7 @@ flags.DEFINE_bool('train_noisy', None, 'decide whether to train with noise or no
 flags.DEFINE_float('train_noise_variance', None, 'noise variance used during training (in case noisy training is chosen)')
 flags.DEFINE_bool('load_pretrained', None, 'decide whether to load pre trained model')
 flags.DEFINE_bool('test', None, 'decide whether to test or not')
-flags.DEFINE_bool('relative_accuracy', True, 'evaluate with respect to correct batch correct samples')
+flags.DEFINE_bool('relative_accuracy', False, 'evaluate with respect to correct batch correct samples')
 flags.DEFINE_bool('test_noisy', False, 'inject noise at test time')
 flags.DEFINE_float('noise_variance', 0, 'value of injected noise variance')
 flags.DEFINE_bool('noise_before_PGD', False, 'decide whether to use noise ')
@@ -74,6 +74,14 @@ flags.DEFINE_integer('pre_training_steps', 0, 'number of pre-training steps to u
 
 flags.DEFINE_bool('track_rank', False, 'track rank of last layer activations during training')
 
+flags.DEFINE_bool('test_low_pass_robustness', False, 'test low pass robustness')
+flags.DEFINE_list('radii_to_test', [], 'radii to test')
+
+flags.DEFINE_integer('low_pass_radius', None, 'radius for low pass filtering')
+
+flags.DEFINE_bool('compare_frequency_domain', False, 'test for comparison of components in the frequency domain')
+
+flags.DEFINE_bool('attenuate_HF', False, 'apply High-Frequency attenuation')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

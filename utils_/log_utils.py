@@ -26,6 +26,8 @@ def get_csv_path(model_name):
     # directory before analysis
     csv_path_dir = root_dir + model_name + '/' + eval_mode_str + '/'  \
                     + FLAGS.attacks_in[0] + '/' 
+    if not os.path.isdir(csv_path_dir):
+        os.mkdir(csv_path_dir)
     
     if FLAGS.test_frequency:
         if not os.path.isdir(csv_path_dir + 'frequency_test/'):
@@ -44,11 +46,18 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'capacity_regularization/')
         csv_path_dir = csv_path_dir + 'capacity_regularization/'
     
+    # rank init
     if FLAGS.rank_init:
         if not os.path.isdir(csv_path_dir + 'rank_init/'):
             os.mkdir(csv_path_dir + 'rank_init/')
         csv_path_dir = csv_path_dir + 'rank_init/' 
     
+    # test low pass robustness
+    if FLAGS.test_low_pass_robustness:
+        if not os.path.isdir(csv_path_dir + 'test_low_pass_robustness/'):
+            os.mkdir(csv_path_dir + 'test_low_pass_robustness/')
+        csv_path_dir = csv_path_dir + 'test_low_pass_robustness/' 
+
     # channel transfer
     if len(FLAGS.channel_transfer) > 0 :
         if not os.path.isdir(csv_path_dir + 'channel_transfer/'):
@@ -56,6 +65,11 @@ def get_csv_path(model_name):
         csv_path_dir = csv_path_dir + 'channel_transfer/'
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + FLAGS.channel_transfer +  '.csv'
+
+    if FLAGS.attenuate_HF:
+        if not os.path.isdir(csv_path_dir + 'attenuate_HF/'):
+            os.mkdir(csv_path_dir + 'attenuate_HF/')
+        csv_path_dir = csv_path_dir + 'attenuate_HF/' 
 
     ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
