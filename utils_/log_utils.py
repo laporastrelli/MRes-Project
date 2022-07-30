@@ -71,6 +71,11 @@ def get_csv_path(model_name):
         if not os.path.isdir(csv_path_dir + 'train_with_GaussianBlurr/'):
             os.mkdir(csv_path_dir + 'train_with_GaussianBlurr/')
         csv_path_dir = csv_path_dir + 'train_with_GaussianBlurr/'
+
+    if FLAGS.train_with_low_frequency:
+        if not os.path.isdir(csv_path_dir + 'train_with_low_frequency/'):
+            os.mkdir(csv_path_dir + 'train_with_low_frequency/')
+        csv_path_dir = csv_path_dir + 'train_with_low_frequency/'
     
     if FLAGS.use_scaling:
         if not os.path.isdir(csv_path_dir + 'use_scaling/'):

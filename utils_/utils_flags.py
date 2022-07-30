@@ -79,6 +79,7 @@ flags.DEFINE_bool('use_SkipInit', False, 'initialize ResNet with SkipInit')
 flags.DEFINE_bool('train_small_lr', False, 'train models with BN with smaller LR than usual')
 
 flags.DEFINE_bool('train_with_GaussianBlurr', False, 'train model with Gaussian Blurring')
+flags.DEFINE_bool('train_with_low_frequency', False, 'train model with low-frequency data augmentation')
 
 flags.DEFINE_bool('use_scaling', False, 'train model with scale layer')
 flags.DEFINE_bool('test_low_pass_robustness', False, 'test low pass robustness')
