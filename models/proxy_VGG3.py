@@ -59,6 +59,7 @@ class proxy_VGG3(nn.Module):
         self.attenuate_HF = attenuate_HF
 
         self.bn_parameters = {}
+        self.running_variances = {}
         self.test_variance = {}
 
         # IB noise calculation
@@ -209,18 +210,15 @@ class proxy_VGG3(nn.Module):
                         # apply batch norm
                         x = model(self.gaussian_activations)
 
-                    if self.attenuate_HF and bn_count == self.layer_to_test:
+                    if self.attenuate_HF:
                         # apply BN
                         x = model(x)
                         # create copy of BN-activated layer
                         x_HF = x.clone()
                         # transform activations to have attenuated HF 
-                        '''scale = model.weight.cpu().detach().numpy() / model.running_var.cpu().detach().numpy()
-                        tmp = self.HF_manipulation(x_HF.cpu().detach().numpy(), r=15, scale=scale)
-                        x = torch.tensor(tmp, dtype=torch.float32, device=self.device)'''
                         scale = model.weight / model.running_var
                         scale = torch.where(scale > 1, scale, torch.Tensor([1.]).to(self.device))
-                        # x = self.HF_manipulation(x_HF, r=15, scale=scale)
+                        x = self.HF_manipulation(x_HF, r=15, scale=scale)
 
                     else:
                         x = model(x)
@@ -294,24 +292,24 @@ class proxy_VGG3(nn.Module):
 
     def set_verbose(self, verbose):
         self.verbose = verbose
+
     
-    def get_bn_parameters(self):
+    def get_bn_parameters(self, get_variance=False):
         bn_count = 0
-        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+        for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), \
+                       "Previous module should be Conv2d"
                 self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
-                bn_count += 1
+                if get_variance:
+                    self.running_variances['BN_' + str(bn_count)] = model.running_var.cpu().detach()
+                bn_count +=1
         return self.bn_parameters
     
     def get_running_variance(self):
-        bn_count = 0
-        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
-            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
-                self.bn_parameters['BN_' + str(bn_count)] = model.running_var
-                bn_count += 1
-        return self.bn_parameters
+        self.get_bn_parameters(get_variance=True)
+        return self.running_variances
+    
     
     def get_bn_int_from_name(self):
         temp = self.run_name.split('_')[1]
@@ -464,22 +462,3 @@ class GaussianSmoothing(nn.Module):
             filtered (torch.Tensor): Filtered output.
         """
         return self.conv(input, weight=self.weight, groups=self.groups)
-
-
-'''Images_freq_low = []
-for i in range(Images.size(0)):
-    tmp = np.zeros([Images.shape[1], Images.shape[2], Images.shape[3]])
-    for j in range(Images.shape[1]):
-        timestamp1 = time.time()
-        mask = self.scaled_mask_radial(np.zeros([Images.shape[2], Images.shape[3]]), r, scale[j])
-        fd = self.fftshift(Images[i, j, :, :])
-        timestamp2 = time.time()
-        #print('time elapsed 1: ', timestamp2 - timestamp1)
-        scaled_fd = fd * mask
-        img_low = self.ifftshift(scaled_fd)
-        timestamp3 = time.time()
-        #print('time elapsed 2: ', timestamp3 - timestamp2)
-        tmp[j,:,:] = np.real(img_low)
-    Images_freq_low.append(tmp)
-
-return np.array(Images_freq_low)'''
