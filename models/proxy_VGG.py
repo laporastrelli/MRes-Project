@@ -105,18 +105,38 @@ class proxy_VGG(nn.Module):
     
     def forward(self, x, ch_activation=[], saliency_layer=''):
         bn_count = 0
+        conv_count = 0
+
         for ii, model in enumerate(self.features):
-            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+
+            if isinstance(model, torch.nn.modules.conv.Conv2d):
+                x = model(x)
+                if self.verbose:
+                    self.activations['BN_' + str(conv_count)] = x 
+                
+                if len(ch_activation)> 0 and self.get_bn_int_from_name() not in [100, 1]:
+                    ch, bn_idx, activation = ch_activation
+                    if conv_count == bn_idx: 
+                        print('TRANSFERRING CHANNEL')
+                        if isinstance(ch, list):
+                            for idx_ in ch:
+                                x[:, idx_, :, :] = activation[idx_]
+                        else:
+                            x[:, ch, :, :] = activation
+
+                conv_count += 1
+
+            elif isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
 
-                if self.verbose:
+                if self.verbose and self.get_bn_int_from_name() in [100, 1]:
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                     self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
                     self.activations['BN_' + str(bn_count)] = x 
                     self.bn_parameters['BN_' + str(bn_count)] = model.weight
                     self.test_variance['BN_' + str(bn_count)] = var_test
                 
-                if len(ch_activation)> 0:
+                if len(ch_activation)> 0 and self.get_bn_int_from_name() in [100, 1]:
                     ch, bn_idx, activation = ch_activation
                     if bn_count == bn_idx: 
                         print('TRANSFERRING CHANNEL')
@@ -184,6 +204,18 @@ class proxy_VGG(nn.Module):
         else:
             noisy_mode = True
         return noisy_mode
+
+    def get_bn_int_from_name(self):
+        temp = self.run_name.split('_')[1]
+        if temp == 'bn':
+            bn_locations = 100
+        elif temp == 'no':
+            bn_locations = 0
+        else:
+            # add 1 for consistency with name 
+            bn_locations = int(temp) + 1
+        
+        return bn_locations
 
     def set_verbose(self, verbose):
         self.verbose = verbose

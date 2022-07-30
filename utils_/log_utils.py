@@ -52,6 +52,31 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'rank_init/')
         csv_path_dir = csv_path_dir + 'rank_init/' 
     
+    if FLAGS.use_SkipInit:
+        if not os.path.isdir(csv_path_dir + 'use_SkipInit/'):
+            os.mkdir(csv_path_dir + 'use_SkipInit/')
+        csv_path_dir = csv_path_dir + 'use_SkipInit/'
+    
+    if FLAGS.normalization == 'ln':
+        if not os.path.isdir(csv_path_dir + 'train_ln/'):
+            os.mkdir(csv_path_dir + 'train_ln/')
+        csv_path_dir = csv_path_dir + 'train_ln/'
+    
+    if FLAGS.train_small_lr:
+        if not os.path.isdir(csv_path_dir + 'train_small_lr/'):
+            os.mkdir(csv_path_dir + 'train_small_lr/')
+        csv_path_dir = csv_path_dir + 'train_small_lr/'
+    
+    if FLAGS.train_with_GaussianBlurr:
+        if not os.path.isdir(csv_path_dir + 'train_with_GaussianBlurr/'):
+            os.mkdir(csv_path_dir + 'train_with_GaussianBlurr/')
+        csv_path_dir = csv_path_dir + 'train_with_GaussianBlurr/'
+    
+    if FLAGS.use_scaling:
+        if not os.path.isdir(csv_path_dir + 'use_scaling/'):
+            os.mkdir(csv_path_dir + 'use_scaling/')
+        csv_path_dir = csv_path_dir + 'use_scaling/'
+    
     # test low pass robustness
     if FLAGS.test_low_pass_robustness:
         if not os.path.isdir(csv_path_dir + 'test_low_pass_robustness/'):
@@ -86,7 +111,6 @@ def get_csv_path(model_name):
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
-    
     if FLAGS.test_frequency:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_' \

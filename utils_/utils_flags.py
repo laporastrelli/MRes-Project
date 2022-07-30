@@ -74,6 +74,13 @@ flags.DEFINE_integer('pre_training_steps', 0, 'number of pre-training steps to u
 
 flags.DEFINE_bool('track_rank', False, 'track rank of last layer activations during training')
 
+flags.DEFINE_bool('use_SkipInit', False, 'initialize ResNet with SkipInit')
+
+flags.DEFINE_bool('train_small_lr', False, 'train models with BN with smaller LR than usual')
+
+flags.DEFINE_bool('train_with_GaussianBlurr', False, 'train model with Gaussian Blurring')
+
+flags.DEFINE_bool('use_scaling', False, 'train model with scale layer')
 flags.DEFINE_bool('test_low_pass_robustness', False, 'test low pass robustness')
 flags.DEFINE_list('radii_to_test', [], 'radii to test')
 

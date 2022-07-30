@@ -521,7 +521,7 @@ def channel_transfer(net,
 
     # create directory
     if model_path.find('bitbucket')!= -1:
-        dir_path = './gpucluster/CIFAR10' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
+        dir_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
                 + run_name.split('_')[0]  + '_' +  run_name.split('_')[1] + '/'
     else:
         dir_path = './results/' + get_model_name(run_name) + '/eval/PGD/channel_transfer/' \
