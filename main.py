@@ -102,7 +102,6 @@ def main(argv):
                 already_exists = check_log(run_name=FLAGS.pretrained_name, log_file=csv_path)
             print('ALREAD EXISTS IN RESULTS LOG: ', already_exists)
 
-
     # carry out channel transfer only for full-BN configs
     if len(FLAGS.channel_transfer)>0:
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
@@ -117,13 +116,13 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
             already_exists = True
     if FLAGS.parametric_frequency_MSE_CE or FLAGS.parametric_frequency_MSE:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
             already_exists = True
     if FLAGS.compare_frequency_domain:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True 
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:

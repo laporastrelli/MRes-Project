@@ -1891,7 +1891,8 @@ def IB_noise_calculation(model,
                          run_name,
                          eval_mode=True, 
                          layer_to_test=0, 
-                         capacity_regularization=False):
+                         capacity_regularization=False, 
+                         use_scaling=True):
     '''
     input(s):
         - model
@@ -1903,7 +1904,6 @@ def IB_noise_calculation(model,
         - array of robust/non-robust channels in a layer 
     '''
     
-    print(run_name)
     print('layer: ', layer_to_test)
 
     # load model
@@ -1921,11 +1921,11 @@ def IB_noise_calculation(model,
                            layer_to_test=int(layer_to_test))
 
         # initiate noise tensor (specific to first channel)
+        # for full-BN config we are going to test fo multiple layers
+        # while for other configs we test only for the first layer
         if get_bn_int_from_name(run_name) in [100, 1]: 
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
-        else: 
-            noise_length = 64
-        
+        else: noise_length = 64
         model.noise_std = 0.3 + torch.zeros(noise_length, device=device, requires_grad=True) 
 
         # get channel variance
@@ -1934,6 +1934,8 @@ def IB_noise_calculation(model,
         else:
             # since in these configs we do not have the running variance parameter we feed a 
             # batch to the model and take the batch variance as "running variance".
+            # RETROSPECTIVE WARNING: "get_running_var" is a wrong for this name since 
+            # we are actually retrieving the test variance of the model (when not full-BN).
             running_var = 0
             X, y = next(iter(test_loader))
             X, y = X.to(device), y.to(device) 
@@ -1941,6 +1943,9 @@ def IB_noise_calculation(model,
             _ = model(X)
             running_var = model.running_var
             model.get_running_var = False
+        
+        running_var = running_var.to(device)
+
 
     if run_name.find('ResNet')!= -1:
         model = proxy_ResNet(model, 
@@ -1984,6 +1989,11 @@ def IB_noise_calculation(model,
     root_path += 'layer_' + str(layer_to_test) + '/'
     if not os.path.isdir(root_path): os.mkdir(root_path)
 
+    if use_scaling:
+        print('Use Bn scaling for ordering')
+        root_path += 'BN_scaling' + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
     # set eval mode
     if eval_mode: model.eval()
 
@@ -1993,8 +2003,6 @@ def IB_noise_calculation(model,
     iterations = 100
 
     accs = []
-
-    prev_noise = 0
 
     # calculate noise
     for j in range(iterations):
@@ -2029,32 +2037,52 @@ def IB_noise_calculation(model,
             # get gradients
             total_loss.backward(retain_graph=True)
 
-            # track noise evolution
+            # track noise evolution for 1st batch of each iteration
             if i==0:
+                # get ordering of the channels depending on the mode chosen (use_scaling or not)
                 if get_bn_int_from_name(run_name) in [100, 1]: 
                     lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
+                    if use_scaling:
+                        scaling = lambdas/torch.sqrt(running_var).cpu()
+                        sorted_lambdas = torch.argsort(scaling, descending=True)
+                        sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+
+                # get noise transformation function depending on model
                 if run_name.find('ResNet')!= -1: noise_std = model.variance_function(model.noise_std) **2
                 elif run_name.find('VGG')!= -1: noise_std = (nn.functional.softplus(model.noise_std)) **2
+
+                # order channels depending on model config
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
                 else: ordered_noise_std = noise_std
+                
+                # plot admissible noise variation against scaling (be it lambdas only or BN scaling overall)
+                # fig = plt.figure()
+                # fig, ax1 = plt.subplots() 
+                fig = plt.figure(figsize=(6,5))
+                ax1 = fig.add_subplot(111)
 
-                fig = plt.figure()
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
                 else: x_axis = np.arange(64)
-                plt.scatter(x_axis, ordered_noise_std.cpu().detach().numpy())
+
+                plt.scatter(x_axis, ordered_noise_std.cpu().detach().numpy(), c="b")
                 if get_bn_int_from_name(run_name) in [100, 1]:
-                    plt.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy())
-                plt.xlabel('Ordered Channel Index')
-                plt.ylabel('Admissible Noise Variance')
-                plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
+                    ax2 = ax1.twinx()
+                    ax2.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy(), c="orange")
+                    ax2.set_ylabel('BatchNorm Net Scaling')
+                ax1.set_xlabel('Ordered Channel Index')
+                ax1.set_ylabel('Admissible Noise Variance')
+
+                plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+
                 fig.savefig(root_path + 'channel_noise_variance.jpg')
                 if os.path.isfile(root_path + 'channel_noise_variance.jpg'):
                     print('Success: Figure saved')
                 else:
                     print('SaveError: Unable to save Figure')
-                fig.savefig('./keep_track.jpg')
+                fig.savefig('./z_keep_track_noise_IB/keep_track_noise.jpg')
                 plt.close()
 
                 fig = plt.figure()
@@ -2063,7 +2091,7 @@ def IB_noise_calculation(model,
                 plt.ylabel('Accuracy')
                 plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
                 fig.savefig(root_path + 'accuracy.jpg')
-                fig.savefig('./keep_track_2.jpg')
+                fig.savefig('./z_keep_track_noise_IB/keep_track_acc.jpg')
                 plt.close()
 
             # noise update
@@ -2076,17 +2104,20 @@ def IB_noise_calculation(model,
     
     # determine for each channel whether or not it is "robust" or "non-robust"
     # get channel_variation and compare it to the calculated noise:
-
-    if run_name.find('ResNet')!= -1: noise_std = model.variance_function(model.noise_std) **2
-    elif run_name.find('VGG')!= -1: noise_std = (nn.functional.softplus(model.noise_std)) **2
-
+    if run_name.find('ResNet')!= -1: noise_std = model.variance_function(model.noise_std) ** 2
+    elif run_name.find('VGG')!= -1: noise_std = (nn.functional.softplus(model.noise_std)) ** 2
     noise_ordered_channels = torch.argsort(noise_std, descending=False)
 
     # if the config has Batch Norm at the first layer then we save the noise ordered based on lambdas
     # but we also care to save the ordering of the noise itself to comapre it with that of lambda
     if get_bn_int_from_name(run_name) in [100, 1]: 
         lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
-        sorted_lambdas = torch.argsort(lambdas, descending=True)
+        if use_scaling:
+            scaling = lambdas/torch.sqrt(running_var.cpu())
+            sorted_lambdas = torch.argsort(scaling, descending=True)
+        else:
+            sorted_lambdas = torch.argsort(lambdas, descending=True)
+
         ordered_noise_std = noise_std[sorted_lambdas]
         
     # else we save it in the given order
@@ -2098,7 +2129,6 @@ def IB_noise_calculation(model,
     max_ch_var = torch.max(running_var).cpu().detach()
     noise_std = nn.functional.softplus(model.noise_std).cpu().detach()
     ch_robustness = noise_std**2 > max_ch_var*torch.ones_like(noise_std)
-
     np.save(root_path + 'ch_robustness.npy', np.array(ch_robustness))
 
 def get_parametric_frequency(model, 
@@ -2108,9 +2138,10 @@ def get_parametric_frequency(model,
                              run_name,
                              eval_mode=True, 
                              layer_to_test=0, 
-                             get_parametric_frequency_MSE_only=True,
+                             get_parametric_frequency_MSE_only=False,
                              get_parametric_frequency_MSE_CE=False,
-                             capacity_regularization=False):
+                             capacity_regularization=False, 
+                             use_scaling=True):
     
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
@@ -2185,6 +2216,11 @@ def get_parametric_frequency(model,
     root_path += 'layer_' + str(layer_to_test) + '/'
     if not os.path.isdir(root_path): os.mkdir(root_path)
 
+    if use_scaling:
+        print('Use Bn scaling for ordering')
+        root_path += 'BN_scaling' + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
     # set eval mode
     if eval_mode: model.eval()
 
@@ -2231,13 +2267,17 @@ def get_parametric_frequency(model,
                     print('ITERATION: ', j)
                     print('Accuracy: ', correct/total)
 
-                
             # track noise evolution
             if i==0:
                 if get_bn_int_from_name(run_name) in [100, 1]: 
                     lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
+                    if use_scaling:
+                        running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
+                        scaling = lambdas/torch.sqrt(running_var)
+                        sorted_lambdas = torch.argsort(scaling, descending=True)
+                        sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
                 else:
                     if model_path.find('bitbucket')!=-1:
                         sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
@@ -2248,28 +2288,33 @@ def get_parametric_frequency(model,
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
                 else: ordered_noise_std = noise_std[sorted_lambdas]
 
-                fig = plt.figure()
+                fig = plt.figure(figsize=(6,5))
+                ax1 = fig.add_subplot(111)
+
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
                 else: x_axis = np.arange(64)
 
-                plt.scatter(x_axis, ordered_noise_std.cpu().numpy())
+                plt.scatter(x_axis, ordered_noise_std.cpu().detach().numpy())
                 if get_bn_int_from_name(run_name) in [100, 1]:
-                    plt.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy())
-                plt.xlabel('Ordered Channel Index')
-                plt.ylabel('Gaussian Noise Standard Deviation')
-                plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
+                    ax2 = ax1.twinx()
+                    ax2.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy(), c="orange")
+                    ax2.set_ylabel('BatchNorm Net Scaling')
+                    # plt.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy())
+                ax1.set_xlabel('Ordered Channel Index')
+                ax1.set_ylabel('Gaussian Noise Standard Deviation')
+
+                plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
 
                 fig.savefig(root_path + 'gaussian_noise_std.jpg')
-
                 if os.path.isfile(root_path + 'gaussian_noise_std.jpg'):
                     print('Success: Figure saved')
                 else:
                     print('SaveError: Unable to save Figure')
-
                 if get_parametric_frequency_MSE_only:
-                    fig.savefig('./keep_track_MSE.jpg')
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_MSE.jpg')
                 elif get_parametric_frequency_MSE_CE:
-                    fig.savefig('./keep_track_MSE_CE.jpg')
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_MSE_CE.jpg')
 
                 plt.close()
 
@@ -2280,7 +2325,7 @@ def get_parametric_frequency(model,
                     plt.ylabel('Loss')
                     plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
                     fig.savefig(root_path + 'loss.jpg')
-                    fig.savefig('./keep_track_loss.jpg')
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_loss.jpg')
                     plt.close()
                 elif get_parametric_frequency_MSE_CE:
                     fig = plt.figure()
@@ -2289,7 +2334,7 @@ def get_parametric_frequency(model,
                     plt.ylabel('Accuracy')
                     plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
                     fig.savefig(root_path + 'accuracy.jpg')
-                    fig.savefig('./keep_track_accuracy.jpg')
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_accuracy.jpg')
                     plt.close()
 
             # noise update
@@ -2305,6 +2350,11 @@ def get_parametric_frequency(model,
     if get_bn_int_from_name(run_name) in [100, 1]: 
         lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
         sorted_lambdas = torch.argsort(lambdas, descending=True)
+        if use_scaling:
+            scaling = lambdas/torch.sqrt(running_var)
+            sorted_lambdas = torch.argsort(scaling, descending=True)
+        else:
+            sorted_lambdas = torch.argsort(lambdas, descending=True)
         ordered_noise_std = noise_std[sorted_lambdas]
     
     # else we save it in the given order
