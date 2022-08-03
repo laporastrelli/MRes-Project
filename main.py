@@ -122,12 +122,11 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
             already_exists = True 
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
-
 
     # display model info
     if FLAGS.verbose:
@@ -146,6 +145,8 @@ def main(argv):
             print('| Epsilon Budget:     ', FLAGS.epsilon_in)
         print('-----------------------------------------------------------------------------')
         print('RUN: ', not already_exists)
+    
+
 
     ######################################################### OPERATIONS #########################################################
 

@@ -229,6 +229,8 @@ def get_data():
     ## delta are going to be saved in memory in the same order as the test samples are. 
     
     train_loader = DataLoader(train_set, batch_size=FLAGS.batch_size, shuffle=True)
+    if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
+        FLAGS.batch_size = 32
     test_loader = DataLoader(test_set, batch_size=FLAGS.batch_size, shuffle=False)
 
     return train_loader, test_loader
