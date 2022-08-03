@@ -164,7 +164,7 @@ def train (train_loader,
             weight_decay=5e-4
             grad_clip = False
             lr_ = 0.01
-            if FLAGS.normalization == 'ln':
+            if FLAGS.normalization == 'ln' or FLAGS.nonlinear_lambda or FLAGS.dropout_lambda:
                 lr_ = 0.005
             elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
                 lr_ = 0.001
@@ -393,6 +393,7 @@ def train (train_loader,
                                 regularizer = regularizer + LA.norm(weights, 2)
                     regularizer = FLAGS.beta*(regularizer)
                     loss += regularizer
+
                 elif FLAGS.regularization_mode == 'uniform_lambda':
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':

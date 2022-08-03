@@ -96,6 +96,25 @@ def get_csv_path(model_name):
             os.mkdir(csv_path_dir + 'attenuate_HF/')
         csv_path_dir = csv_path_dir + 'attenuate_HF/' 
 
+    if FLAGS.bounded_lambda:
+        if not os.path.isdir(csv_path_dir + 'bounded_lambda/'):
+            os.mkdir(csv_path_dir + 'bounded_lambda/')
+        csv_path_dir = csv_path_dir + 'bounded_lambda/' 
+        if FLAGS.free_lambda:
+            if not os.path.isdir(csv_path_dir + 'free_lambda/'):
+                os.mkdir(csv_path_dir + 'free_lambda/')
+            csv_path_dir = csv_path_dir + 'free_lambda/'
+    
+    if FLAGS.nonlinear_lambda:
+        if not os.path.isdir(csv_path_dir + 'nonlinear_lambda/'):
+            os.mkdir(csv_path_dir + 'nonlinear_lambda/')
+        csv_path_dir = csv_path_dir + 'nonlinear_lambda/'
+    
+    if FLAGS.dropout_lambda:
+        if not os.path.isdir(csv_path_dir + 'dropout_lambda/'):
+            os.mkdir(csv_path_dir + 'dropout_lambda/')
+        csv_path_dir = csv_path_dir + 'dropout_lambda/'
+
     ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
         acc_mode = 'relative'

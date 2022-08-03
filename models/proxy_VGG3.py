@@ -19,8 +19,17 @@ from absl import flags
 from collections import namedtuple
 from torchvision import datasets, transforms
 
-
 FLAGS = flags.FLAGS
+
+class Tanh_ScaleLayer(nn.Module):
+
+   def __init__(self, n_channels, device, init_value=1, var_scaling=1.0):
+       super().__init__()
+       self.scale = nn.Parameter(init_value*torch.ones(n_channels, device=device))
+       self.var_scaling = var_scaling
+
+   def forward(self, input):
+       return (self.var_scaling*nn.functional.tanh(self.scale)).view(1, -1, 1, 1).expand(input.size()) * input
 
 class proxy_VGG3(nn.Module):
     '''
@@ -42,7 +51,12 @@ class proxy_VGG3(nn.Module):
                  attenuate_HF=False,
                  IB_noise_std=0, 
                  gaussian_std=[0*i for i in range(64)],
-                 layer_to_test=0):
+                 layer_to_test=0, 
+                 bounded_lambda=False, 
+                 dropout_bn=False,
+                 nonlinear_lambda=False,
+                 free_lambda=True,
+                 train_mode=False):
 
         super(proxy_VGG3, self).__init__()
 
@@ -55,6 +69,11 @@ class proxy_VGG3(nn.Module):
         self.run_name = run_name
         self.get_running_var = False
         self.running_var = 0 
+        self.bounded_lambda = bounded_lambda
+        self.dropout_bn = dropout_bn
+        self.nonlinear_lambda = nonlinear_lambda
+        self.free_lambda = free_lambda
+        self.train_mode = train_mode
 
         self.attenuate_HF = attenuate_HF
 
@@ -75,11 +94,11 @@ class proxy_VGG3(nn.Module):
         self.get_parametric_frequency_MSE_CE = get_parametric_frequency_MSE_CE
 
         ############################
+        self.channels = len(gaussian_std)
         self.gaussian_std = torch.FloatTensor(gaussian_std)
         self.gaussian_std.requires_grad = True
         self.ground_truth_activations = 0
         self.gaussian_activations = 0
-        self.channels = 64
         # self.conv_gaussian = nn.Conv2d(self.channels, self.channels, kernel_size=5, stride=1, padding=2, bias=False, groups=self.channels)
         # self.conv_gaussian.weight.requires_grad = False
         self.conv1 = net.features[0]
@@ -107,6 +126,45 @@ class proxy_VGG3(nn.Module):
             self.avgpool = net.avgpool
             self.classifier = nn.ModuleList(classifier)
         ###########################################
+
+        ###########################################
+        if self.nonlinear_lambda and self.train_mode:
+            self.init_scale_layers()
+            self.set_gradient_mode()
+        
+        if self.dropout_bn:
+            self.init_dropout_layers()
+        
+        if self.bounded_lambda and self.free_lambda:
+            print('Training with gradient free adaptive lambda')
+            self.set_gradient_mode()
+        ###########################################
+    
+    def init_scale_layers(self):
+        self.scale_layers = []
+        for ii, model in enumerate(self.features): 
+                if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                    assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                    self.scale_layers.append(Tanh_ScaleLayer(n_channels=model.weight.size(), device=self.device, init_value=0.5))
+    
+    def init_dropout_layers(self):
+        self.dropout_layers = []
+        bn_c = 0
+        for ii, model in enumerate(self.features): 
+                if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                    assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                    if bn_c == 0:
+                        p = 0.85
+                    else:
+                        p = 0.85
+                    self.dropout_layers.append(nn.Dropout(p=p))
+                    bn_c +=1
+
+    def set_gradient_mode(self):
+        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                model.weight.requires_grad = False
     
     def get_gaussian_kernel(self, kernel_size=5, channels=1):
         channels = self.channels
@@ -147,7 +205,7 @@ class proxy_VGG3(nn.Module):
             self.ground_truth_activations = x.detach().clone()
 
             # apply it
-            self.gaussian_activations = F.conv2d(x, self.get_gaussian_kernel(), padding=2, groups=self.channels)
+            self.gaussian_activations = F.conv2d(x, self.get_gaussian_kernel(kernel_size=kernel_size), padding=padding, groups=self.channels)
 
             # calculate standard deviation gradient
             self.gaussian_std.retain_grad()
@@ -194,11 +252,17 @@ class proxy_VGG3(nn.Module):
                         x = x + noise.to(self.device)
                         self.noise_std.retain_grad()
                     
-                    if self.get_parametric_frequency_MSE_CE and self.layer_to_test==bn_count:
+                    if self.get_parametric_frequency_MSE_CE and bn_count==self.layer_to_test:
                         # construct channel-wise gaussian-based convolutional layer
                         self.ground_truth_activations = x.detach().clone()
                         
                         # apply it
+                        if self.layer_to_test == 0:
+                            kernel_size = 5
+                            padding=2
+                        else:
+                            kernel_size = 3
+                            padding=1
                         self.gaussian_activations = F.conv2d(x, self.get_gaussian_kernel(), padding=2, groups=self.channels)
 
                         # calculate standard deviation gradient
@@ -210,15 +274,40 @@ class proxy_VGG3(nn.Module):
                         # apply batch norm
                         x = model(self.gaussian_activations)
 
-                    if self.attenuate_HF:
+                    if self.attenuate_HF and bn_count==self.layer_to_test:
                         # apply BN
                         x = model(x)
                         # create copy of BN-activated layer
                         x_HF = x.clone()
                         # transform activations to have attenuated HF 
-                        scale = model.weight / model.running_var
+                        scale = model.weight / torch.sqrt(model.running_var)
                         scale = torch.where(scale > 1, scale, torch.Tensor([1.]).to(self.device))
                         x = self.HF_manipulation(x_HF, r=15, scale=scale)
+
+                    if self.bounded_lambda:
+                        # model.weight = torch.nn.Parameter((torch.sqrt(model.running_var)/model.weight) * nn.functional.softmax(model.weight))
+                        # model.weight.data = model.weight.data.clamp(-torch.sqrt(model.running_var)/model.weight, torch.sqrt(model.running_var)/model.weight)
+                        if self.free_lambda:
+                            '''adaptive_scaling = torch.ones_like(model.weight)
+                            for i in range(model.weight.size(0)):
+                                adaptive_scaling[i] = torch.normal(model.running_var[i], 0.5)
+                                #print(adaptive_scaling)'''
+                            adaptive_scaling = 0.1*torch.ones_like(model.weight)
+                            model.weight.data = adaptive_scaling*model.weight.data
+                        else:
+                            model.weight.data = model.weight.data.clamp(-torch.sqrt(model.running_var), torch.sqrt(model.running_var))
+                        x = model(x)
+
+                    if self.nonlinear_lambda:
+                        lambda_scaling = self.scale_layers[bn_count]
+                        lambda_scaling.var_scaling = torch.sqrt(model.running_var)
+                        x = lambda_scaling(x)
+                        x = model(x)
+
+                    if self.dropout_bn:
+                        bn_dropout = self.dropout_layers[bn_count]
+                        x = bn_dropout(x)
+                        x = model(x)
 
                     else:
                         x = model(x)

@@ -1,3 +1,4 @@
+from audioop import avg
 from pdb import runcall
 from sqlite3 import Timestamp
 from tkinter.tix import Tree
@@ -2045,9 +2046,14 @@ def IB_noise_calculation(model,
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
                     if use_scaling:
-                        scaling = lambdas/torch.sqrt(running_var).cpu()
-                        sorted_lambdas = torch.argsort(scaling, descending=True)
-                        sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+                        if capacity_regularization:
+                            scaling = 1/torch.sqrt(running_var).cpu()
+                            sorted_lambdas = torch.argsort(scaling, descending=True)
+                            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+                        else:
+                            scaling = lambdas/torch.sqrt(running_var).cpu()
+                            sorted_lambdas = torch.argsort(scaling, descending=True)
+                            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
 
                 # get noise transformation function depending on model
                 if run_name.find('ResNet')!= -1: noise_std = model.variance_function(model.noise_std) **2
@@ -2151,6 +2157,7 @@ def get_parametric_frequency(model,
 
     # initiate model
     if run_name.find('VGG')!= -1:
+        n_channels = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512, 512, 512]
         model = proxy_VGG3(model, 
                            eval_mode=eval_mode,
                            device=device,
@@ -2159,6 +2166,7 @@ def get_parametric_frequency(model,
                            IB_noise_calculation=False,
                            get_parametric_frequency_MSE_only=get_parametric_frequency_MSE_only,
                            get_parametric_frequency_MSE_CE=get_parametric_frequency_MSE_CE,
+                           gaussian_std=[0*i for i in range(n_channels[int(layer_to_test)])],
                            layer_to_test=int(layer_to_test))
 
         
@@ -2174,8 +2182,9 @@ def get_parametric_frequency(model,
     # initiate noise tensor (specific to first channel)
     if get_bn_int_from_name(run_name) in [100, 1]: 
         noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
+        print('NOISE LENGTH: ', noise_length)
     else: 
-        noise_length = 64
+        noise_length = n_channels[int(layer_to_test)]
     
     # initial noise std
     if get_parametric_frequency_MSE_only: std_init = 0.75
@@ -2183,7 +2192,10 @@ def get_parametric_frequency(model,
         if get_bn_int_from_name(run_name) == 0:
             std_init = 0.75
         else:
-            std_init = 1
+            if int(layer_to_test) > 0:
+                std_init = 0.75
+            else: 
+                std_init = 1
 
     # initialize noise standard deviation as a list of 2-dimensional tensors (sigma_x, sigma_y)_C
     model.gaussian_std = std_init*torch.ones(noise_length, device=device, requires_grad=True)
@@ -2220,17 +2232,37 @@ def get_parametric_frequency(model,
         print('Use Bn scaling for ordering')
         root_path += 'BN_scaling' + '/'
         if not os.path.isdir(root_path): os.mkdir(root_path)
+    else:
+        print('Use lambda scaling for ordering')
+        root_path += 'lambda_scaling' + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
 
     # set eval mode
     if eval_mode: model.eval()
 
     # initiate hyperparam
     if get_parametric_frequency_MSE_only: lr = 0.1
-    elif get_parametric_frequency_MSE_CE: lr = 0.05
-    beta_mse = 1
+    elif get_parametric_frequency_MSE_CE: 
+        if layer_to_test == 0:
+            lr = 0.001
+            beta_mse = 10
+        else: 
+            lr = 0.5
+            beta_mse = 0.5
+
     iterations = 20
 
-    accs = []
+    accs = [] 
+
+    fig = plt.figure()
+    running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
+    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+    plt.scatter(lambdas, lambdas/torch.sqrt(running_var))
+    plt.xlabel(r'$\lambda$' + '-values')
+    plt.ylabel(r'$\lambda - \sigma$' + ' ratio')
+    plt.title('Comparison of ' + r'$\lambda$' + ' and ' + r'$\sigma$' + ' scaling')
+    fig.savefig(root_path + 'BN_scaling_comparison.jpg')
+    plt.close()
 
     # calculate std
     for j in range(iterations):
@@ -2256,6 +2288,7 @@ def get_parametric_frequency(model,
                 gt = model.ground_truth_activations
                 pred_features = model.gaussian_activations
                 loss_mse = nn.MSELoss()(pred_features, gt)
+                #loss_mse = 0
                 loss = loss_ce + beta_mse*loss_mse
                 loss.backward(retain_graph=True)
 
@@ -2288,11 +2321,12 @@ def get_parametric_frequency(model,
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
                 else: ordered_noise_std = noise_std[sorted_lambdas]
 
+                ###############################################################################################
                 fig = plt.figure(figsize=(6,5))
                 ax1 = fig.add_subplot(111)
 
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
-                else: x_axis = np.arange(64)
+                else: x_axis = np.arange(len(n_channels[int(layer_to_test)]))
 
                 plt.scatter(x_axis, ordered_noise_std.cpu().detach().numpy())
                 if get_bn_int_from_name(run_name) in [100, 1]:
@@ -2303,7 +2337,7 @@ def get_parametric_frequency(model,
                 ax1.set_xlabel('Ordered Channel Index')
                 ax1.set_ylabel('Gaussian Noise Standard Deviation')
 
-                plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.title('Channel Frequency Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
 
                 fig.savefig(root_path + 'gaussian_noise_std.jpg')
@@ -2317,6 +2351,66 @@ def get_parametric_frequency(model,
                     fig.savefig('./z_keep_track_noise_IB/keep_track_MSE_CE.jpg')
 
                 plt.close()
+                ###############################################################################################
+
+                ###############################################################################################
+                fig = plt.figure(figsize=(6,5))
+                ax1 = fig.add_subplot(111)
+
+                avg_len = 8
+                mean_val = []
+                mean_lambda_val = []
+                std_val = []
+                std_lambda_val = []
+                temporary = ordered_noise_std.cpu().detach().numpy()
+                temporary2 = sorted_lambdas_values.cpu().detach().numpy()
+                for i in range(0, n_channels[int(layer_to_test)], avg_len):
+                    #print(ordered_noise_std.cpu().detach().numpy())
+                    idx_1 = i
+                    idx_2 = i + avg_len
+
+                    mean_val.append(np.mean(temporary[idx_1:idx_2]))
+                    std_val.append(np.std(temporary[idx_1:idx_2]))
+
+                    mean_lambda_val.append(np.mean(temporary2[idx_1:idx_2]))
+                    std_lambda_val.append(np.std(temporary2[idx_1:idx_2]))
+                
+                mean_val = np.array(mean_val)
+                mean_lambda_val = np.array(mean_lambda_val)
+                std_val = np.array(std_val)
+                std_lambda_val = np.array(std_lambda_val)
+
+                if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(0, sorted_lambdas.size(0), avg_len)
+                else: x_axis = np.arange(0, n_channels[int(layer_to_test)], avg_len)
+
+                ax1.scatter(x_axis, mean_val, c='b')
+                ax1.plot(x_axis, mean_val, c='b')
+                ax1.fill_between(x_axis, mean_val-std_val, mean_val+std_val, alpha=0.5)
+                ax1.set_xlabel('Ordered Channel Index')
+                ax1.set_ylabel('Gaussian Noise Standard Deviation')
+
+                if get_bn_int_from_name(run_name) in [100, 1]:
+                    ax2 = ax1.twinx()
+                    ax2.scatter(x_axis, mean_lambda_val, c="orange")
+                    ax2.plot(x_axis, mean_lambda_val, c="orange")
+                    #ax2.fill_between(x_axis, mean_lambda_val-std_lambda_val, mean_lambda_val+std_lambda_val, alpha=0.5)
+                    ax2.set_ylabel('BatchNorm Net Scaling')
+                
+                plt.title('Channel Frequency Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+
+                fig.savefig(root_path + 'gaussian_noise_std_averaged.jpg')
+                if os.path.isfile(root_path + 'gaussian_noise_std_averaged.jpg'):
+                    print('Success: Figure saved')
+                else:
+                    print('SaveError: Unable to save Figure')
+                if get_parametric_frequency_MSE_only:
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_MSE_av.jpg')
+                elif get_parametric_frequency_MSE_CE:
+                    fig.savefig('./z_keep_track_noise_IB/keep_track_MSE_CE_av.jpg')
+
+                plt.close()
+                ###############################################################################################
 
                 if get_parametric_frequency_MSE_only:
                     fig = plt.figure()
@@ -2350,11 +2444,13 @@ def get_parametric_frequency(model,
     if get_bn_int_from_name(run_name) in [100, 1]: 
         lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
         sorted_lambdas = torch.argsort(lambdas, descending=True)
+        sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
         if use_scaling:
+            running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
             scaling = lambdas/torch.sqrt(running_var)
             sorted_lambdas = torch.argsort(scaling, descending=True)
-        else:
-            sorted_lambdas = torch.argsort(lambdas, descending=True)
+            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+ 
         ordered_noise_std = noise_std[sorted_lambdas]
     
     # else we save it in the given order
@@ -2367,6 +2463,7 @@ def get_parametric_frequency(model,
         ordered_noise_std = noise_std[sorted_lambdas]
     
     np.save(root_path + 'ordered_channel_noise_variance.npy', np.array(ordered_noise_std.cpu().detach()))
+    np.save(root_path + 'sorted_scaling_values.npy', np.array(sorted_lambdas_values.cpu().detach()))
     np.save(root_path + 'frequency_ordered_channels.npy', np.array(frequency_ordered_channels.cpu().detach()))
     
 def test_low_pass_robustness(model, 
