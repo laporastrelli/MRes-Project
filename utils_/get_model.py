@@ -1,3 +1,4 @@
+from tkinter.tix import Tree
 from absl.flags import FLAGS
 from matplotlib import use
 import torchvision.models as models
@@ -5,7 +6,7 @@ from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
-def get_model(model_name, where_bn, run_name=''):
+def get_model(model_name, where_bn, run_name='', train_mode=False):
     
     if model_name == 'ResNet50':
         if sum(where_bn)>1:
@@ -89,7 +90,47 @@ def get_model(model_name, where_bn, run_name=''):
                                 device=FLAGS.device,
                                 noise_variance=FLAGS.noise_variance, 
                                 run_name=run_name)
-
+        
+        if FLAGS.bounded_lambda:
+            if model_name.find('VGG')!= -1:
+                if FLAGS.free_lambda:
+                    net = proxy_VGG3(net, 
+                                    eval_mode=FLAGS.use_pop_stats,
+                                    device=FLAGS.device,
+                                    noise_variance=FLAGS.noise_variance, 
+                                    run_name=run_name, 
+                                    bounded_lambda=True, 
+                                    free_lambda=True,
+                                    train_mode=train_mode)
+                else:
+                    net = proxy_VGG3(net, 
+                                    eval_mode=FLAGS.use_pop_stats,
+                                    device=FLAGS.device,
+                                    noise_variance=FLAGS.noise_variance, 
+                                    run_name=run_name, 
+                                    bounded_lambda=True, 
+                                    train_mode=train_mode)
+        
+        if FLAGS.nonlinear_lambda:
+            if model_name.find('VGG')!= -1:
+                net = proxy_VGG3(net, 
+                                eval_mode=FLAGS.use_pop_stats,
+                                device=FLAGS.device,
+                                noise_variance=FLAGS.noise_variance, 
+                                run_name=run_name, 
+                                nonlinear_lambda=True, 
+                                train_mode=train_mode)
+        
+        if FLAGS.dropout_lambda:
+            if model_name.find('VGG')!= -1:
+                net = proxy_VGG3(net, 
+                                eval_mode=FLAGS.use_pop_stats,
+                                device=FLAGS.device,
+                                noise_variance=FLAGS.noise_variance, 
+                                run_name=run_name, 
+                                dropout_bn=True, 
+                                train_mode=train_mode)
+                                
     elif model_name == 'VGG16':
         if sum(where_bn)==0:
             net = VGG.vgg16(where_bn=where_bn)

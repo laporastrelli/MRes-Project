@@ -86,10 +86,14 @@ flags.DEFINE_bool('test_low_pass_robustness', False, 'test low pass robustness')
 flags.DEFINE_list('radii_to_test', [], 'radii to test')
 
 flags.DEFINE_integer('low_pass_radius', None, 'radius for low pass filtering')
-
 flags.DEFINE_bool('compare_frequency_domain', False, 'test for comparison of components in the frequency domain')
-
 flags.DEFINE_bool('attenuate_HF', False, 'apply High-Frequency attenuation')
+
+flags.DEFINE_bool('bounded_lambda', False, 'train with bounded bounded constraint')
+flags.DEFINE_bool('nonlinear_lambda', False, 'train with bounded bounded constraint')
+flags.DEFINE_bool('dropout_lambda', False, 'train with bounded bounded constraint')
+flags.DEFINE_bool('free_lambda', False, 'train with bounded bounded constraint with non-trainable lambda but adaptive')
+
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

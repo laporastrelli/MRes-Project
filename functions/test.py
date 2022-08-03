@@ -48,7 +48,7 @@ def test(run_name,
     device = torch.device(FLAGS.device if torch.cuda.is_available() else "cpu")
     _, test_loader = load_data.get_data()
     model_name, where_bn = get_model_specs(run_name)
-    net = get_model(model_name, where_bn)
+    net = get_model(model_name, where_bn, run_name, train_mode=False)
     PATH_to_model = get_model_path(FLAGS.root_path, model_name, run_name)
     
     if standard:
