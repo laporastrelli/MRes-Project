@@ -1,8 +1,9 @@
+from random import uniform
 from tkinter.tix import Tree
 from absl.flags import FLAGS
 from matplotlib import use
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit, VGG_scaled, ResNet_v1_Scaling
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit, VGG_scaled, ResNet_v1_Scaling, proxy_VGG_ln
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
@@ -44,29 +45,44 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                             train_mode=FLAGS.train,
                                             regularization_mode=FLAGS.regularization_mode)
     
-    if model_name == 'ResNet34':
+    if model_name == 'ResNet18':
+        print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
         if sum(where_bn)>1:
             if int(FLAGS.version) == 2:
-                net = ResNet_v2.Resnet101(where_bn=where_bn)
+                net = ResNet_v2.Resnet18(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet34(where_bn=where_bn)
+                net = ResNet_v1.ResNet18(where_bn=where_bn)
         else:
             if int(FLAGS.version) == 2:
-                net = ResNet_v2.resnet101(where_bn=where_bn)
+                net = ResNet_v2.resnet18(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet34(where_bn=where_bn)
+                net = ResNet_v1.ResNet18(where_bn=where_bn)
 
     elif model_name == 'VGG19':
+        if FLAGS.dataset == 'CIFAR100':
+            n_classes = 100
+        else:
+            n_classes = 10
         if sum(where_bn)==0:
             if FLAGS.use_scaling:
                 net = VGG_scaled.vgg19(where_bn=where_bn, normalization=FLAGS.normalization, use_scaling=FLAGS.use_scaling)
             else:
-                net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization)
+                net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization, n_classes=n_classes)
         else:
-            net = VGG.vgg19_bn(where_bn=where_bn, normalization=FLAGS.normalization)
+            net = VGG.vgg19_bn(where_bn=where_bn, normalization=FLAGS.normalization, n_classes=n_classes)
 
         if FLAGS.normalization == 'ln':
             print(net)
+            if FLAGS.uniform_lambda:
+                net = proxy_VGG_ln.proxy_VGG_ln(net, 
+                                                eval_mode=FLAGS.use_pop_stats,
+                                                device=FLAGS.device,
+                                                noise_variance=FLAGS.noise_variance, 
+                                                run_name=run_name, 
+                                                dropout_bn=False, 
+                                                uniform_lambda=True,
+                                                train_mode=train_mode)
+                
 
         if FLAGS.train_noisy:
             print("Noisy Training ...")

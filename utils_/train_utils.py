@@ -82,6 +82,21 @@ def train (train_loader,
                 n_epochs = 150
                 grad_clip = False
                 scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+        
+        if FLAGS.dataset == 'CIFAR100':
+            opt_func = optim.SGD
+            momentum=0.9
+            weight_decay=5e-4
+            # option for full-BN training
+            if batch_norm and sum(FLAGS.where_bn)>1:
+                lr_scheduler = optim.lr_scheduler.MultiStepLR
+                lr_ = 0.1
+                if  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
+                    lr_ = 0.001
+                opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
+                n_epochs = 200
+                grad_clip = False
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
 
             # option for partial (or none)-BN training
             else: 
@@ -101,6 +116,7 @@ def train (train_loader,
             # option for full-BN training
             if batch_norm and sum(FLAGS.where_bn)>1:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR
+                opt_func = optim.SGD
                 lr_ = 0.1
                 momentum=0.9
                 weight_decay=5e-4
@@ -111,11 +127,12 @@ def train (train_loader,
             # option for partial (or none)-BN training
             else: 
                 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
+                opt_func = optim.SGD
                 val = 1
                 if val in FLAGS.where_bn and FLAGS.where_bn.index(1) == 2:
                     lr_ = 0.03
                 elif sum(FLAGS.where_bn)==0:
-                    lr_ = 0.001
+                    lr_ = 0.01
                 else:
                     lr_ = 0.01
                 momentum=0.9
@@ -160,12 +177,14 @@ def train (train_loader,
             n_epochs = 65
             if FLAGS.dataset=='SVHN':
                 n_epochs=35
+            if FLAGS.dataset=='CIFAR100':
+                n_epochs=150
             momentum = 0.9
             weight_decay=5e-4
             grad_clip = False
             lr_ = 0.01
             if FLAGS.normalization == 'ln' or FLAGS.nonlinear_lambda or FLAGS.dropout_lambda:
-                lr_ = 0.005
+                lr_ = 0.001
             elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
                 lr_ = 0.001
 

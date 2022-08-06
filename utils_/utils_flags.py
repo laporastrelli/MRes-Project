@@ -31,7 +31,7 @@ flags.DEFINE_bool('random_resizing', False, 'decide whether to apply random inpu
 flags.DEFINE_bool('get_features', False, 'extract layer features mode')
 flags.DEFINE_bool('adversarial_test', None, 'decide whether to test or not')
 flags.DEFINE_bool('plot', False, 'decide whether to plot results or not')
-flags.DEFINE_bool('use_pop_stats', False, 'decide whether to use .eval() mode')
+flags.DEFINE_bool('use_pop_stats', None, 'decide whether to use .eval() mode')
 flags.DEFINE_bool('no_eval_clean', False, 'for adversarial testing with clean batch stats')
 flags.DEFINE_bool('get_logits', False, 'print decision logits')
 flags.DEFINE_bool('save_to_log', False, 'save results to log')
@@ -93,6 +93,7 @@ flags.DEFINE_bool('bounded_lambda', False, 'train with bounded bounded constrain
 flags.DEFINE_bool('nonlinear_lambda', False, 'train with bounded bounded constraint')
 flags.DEFINE_bool('dropout_lambda', False, 'train with bounded bounded constraint')
 flags.DEFINE_bool('free_lambda', False, 'train with bounded bounded constraint with non-trainable lambda but adaptive')
+flags.DEFINE_bool('uniform_lambda', False, 'train with uniform lambda')
 
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')

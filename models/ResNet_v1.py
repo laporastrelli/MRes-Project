@@ -12,11 +12,15 @@ from .custom_modules import Identity, FakeReLU, SequentialWithArgs
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, normalization="bn", activation="relu"):
+    def __init__(self, in_planes, planes, use_bn, stride=1, normalization="bn", activation="relu"):
+
+        self.use_bn = use_bn
+
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         if normalization == "bn":
-            self.bn1 = nn.BatchNorm2d(planes)
+            if self.use_bn:
+                self.bn1 = nn.BatchNorm2d(planes)
         elif normalization == "id":
             self.bn1 = Identity()
         elif normalization == "gn":
@@ -30,7 +34,8 @@ class BasicBlock(nn.Module):
             
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         if normalization == "bn":
-            self.bn2 = nn.BatchNorm2d(planes)
+            if self.use_bn:
+                self.bn2 = nn.BatchNorm2d(planes)
         elif normalization == "id":
             self.bn2 = Identity()
         elif normalization == "gn":
@@ -43,10 +48,15 @@ class BasicBlock(nn.Module):
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             if normalization == "bn":
-                self.shortcut = nn.Sequential(
-                    nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                    nn.BatchNorm2d(self.expansion*planes)
-                )
+                if self.use_bn:
+                    self.shortcut = nn.Sequential(
+                        nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                        nn.BatchNorm2d(self.expansion*planes)
+                    )
+                else:
+                    self.shortcut = nn.Sequential(
+                        nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                    )
             elif normalization == "id":
                 self.shortcut = nn.Sequential(
                     nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)
@@ -82,9 +92,19 @@ class BasicBlock(nn.Module):
             raise ValueError
 
     def forward(self, x, fake_relu=False):
-        out = self.activation_fn(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
+        # out = self.activation_fn(self.bn1(self.conv1(x)))
+        out = self.conv1(x)
+        if self.use_bn:
+            out = self.bn1(out)
+        out = self.activation_fn(out)
+
+        # out = self.bn2(self.conv2(out))
+        out = self.conv2(out)
+        if self.use_bn:
+            out = self.bn2(out)
+        
         out += self.shortcut(x)
+        
         if fake_relu:
             out = FakeReLU.apply(out)
         else:
@@ -154,7 +174,8 @@ class Bottleneck(nn.Module):
                     )
                 else:
                     self.shortcut = nn.Sequential(
-                        nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False))
+                        nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)
+                    )
             elif normalization == "id":
                 self.shortcut = nn.Sequential(
                     nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)

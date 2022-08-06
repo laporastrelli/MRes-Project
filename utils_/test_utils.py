@@ -88,7 +88,7 @@ def test(net,
         get_logits=False):
 
     # net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     if inject_noise:
@@ -2756,6 +2756,7 @@ def test_SquareAttack(model,
                       device, 
                       run_name,
                       epsilon,
+                      n_queries,
                       eval_mode=True):
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
@@ -2775,7 +2776,8 @@ def test_SquareAttack(model,
                            device=device,
                            verbose=False,
                            min_tensor=min_tensor, 
-                           max_tensor=max_tensor)
+                           max_tensor=max_tensor, 
+                           n_queries=n_queries)
 
     adversary.attacks_to_run = ['square']
 
