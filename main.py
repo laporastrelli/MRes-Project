@@ -31,6 +31,7 @@ def main(argv):
 
     print('capacity_regularization: ', FLAGS.capacity_regularization)
     print('device: ', FLAGS.device)
+    print('BATCH SIZE: ', FLAGS.batch_size)
 
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
