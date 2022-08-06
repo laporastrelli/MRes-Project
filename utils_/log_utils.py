@@ -14,6 +14,8 @@ def get_csv_path(model_name):
             root_dir = './gpucluster/SVHN/'
         elif FLAGS.dataset=='CIFAR10':
             root_dir = './gpucluster/CIFAR10/'
+        elif FLAGS.dataset=='CIFAR100':
+            root_dir = './gpucluster/CIFAR100/'
     else:
         root_dir = './results/'
 

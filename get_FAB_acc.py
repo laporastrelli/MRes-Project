@@ -248,7 +248,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
         # employ attack
         if attack != 'PGD':
             advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
-        
+            
         with torch.no_grad():
             if FLAGS.test_noisy and not FLAGS.noise_before_PGD:
                 print('Adversarial Test With Noise ...')

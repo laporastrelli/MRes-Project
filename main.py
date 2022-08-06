@@ -52,19 +52,21 @@ def main(argv):
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
         if FLAGS.pretrained_name.find('no_bn')!= -1:
             already_exists = True
+    # retrieve eval-mode-corresponding epsilon budget
     if FLAGS.adversarial_test: 
         if FLAGS.use_pop_stats:
             FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
-    # if FLAGS.adversarial_test and FLAGS.dataset == 'CIFAR100': FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
+    # retrieve frequency-mode-corresponding epsilon budget
+    if FLAGS.test_low_pass_robustness:
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:5]
+    
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
-
     # get BN locations from pretrained model name (for testing only)
     if FLAGS.load_pretrained:
         if FLAGS.result_log.find(',') != -1: result_log = FLAGS.result_log.split(',')
         elif FLAGS.result_log.find(';') != -1: result_log = FLAGS.result_log.split(';')
         FLAGS.bn_locations = get_bn_int_from_name(run_name=FLAGS.pretrained_name)
-    
     # get model name, based on it determine one-hot encoded BN locations 
     model_name = FLAGS.model_name
     bn_locations = get_bn_config_train(model_name=FLAGS.model_name, bn_int=FLAGS.bn_locations)
@@ -72,9 +74,6 @@ def main(argv):
 
     # define test run params
     if FLAGS.test_run: index, bn_string, test_acc, adv_accs, result_log = set_test_run()
-
-    if FLAGS.test_low_pass_robustness:
-        FLAGS.epsilon_in = FLAGS.epsilon_in[0:5]
     
     # dict selection based on mode
     if FLAGS.capacity_regularization:
@@ -130,6 +129,9 @@ def main(argv):
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
+    if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
+        if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
+            already_exists = False 
 
     # display model info
     if FLAGS.verbose:
@@ -149,8 +151,6 @@ def main(argv):
         print('-----------------------------------------------------------------------------')
         print('RUN: ', not already_exists)
     
-
-
     ######################################################### OPERATIONS #########################################################
 
     where_bn = bn_locations

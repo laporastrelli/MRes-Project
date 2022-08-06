@@ -123,14 +123,12 @@ class LowPass(torch.nn.Module):
 
     def get_low_frequecny_img(self, Images, r):
         # get mask
-        #print('__________________________________________', type(Images))
         if len(Images.size()) == 4:
             mask = self.mask_radial(torch.zeros(Images.size(2), Images.size(3)), r)
             mask = mask.view(1, 1, mask.size(0), mask.size(1)).expand(Images.size())
 
         elif len(Images.size()) == 3:
             mask = self.mask_radial_torch(torch.zeros(Images.size(1), Images.size(2)), r)
-            #print('.............................................',mask.size())
             mask = mask.view(1, mask.size(0), mask.size(1)).expand(Images.size())
 
         # carry out FT
@@ -161,42 +159,6 @@ def get_data():
     # dataset download decision
     download = False
 
-    if FLAGS.mode == 'optimum':
-        FLAGS.batch_size = 400
-
-    # performs transforms on data
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-    
-    if FLAGS.train_with_GaussianBlurr:
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
-            transforms.RandomHorizontalFlip(),
-            transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-            ])
-
-    elif FLAGS.train_with_low_frequency:
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
-            transforms.RandomHorizontalFlip(),
-            transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-            LowPass(),
-            ])
-
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-
     # prevents from downloading it if dataset already downloaded
     if not os.path.exists(FLAGS.dataset_path + FLAGS.dataset):
         os.mkdir(FLAGS.dataset_path + FLAGS.dataset)
@@ -205,9 +167,61 @@ def get_data():
         if len(os.listdir(FLAGS.dataset_path + FLAGS.dataset)) == 0:
             download = True
 
+    # mode-dependent batch size
+    if FLAGS.mode == 'optimum':
+        FLAGS.batch_size = 400
+
     if FLAGS.dataset == 'CIFAR10':
+            # performs transforms on data
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ])
+        
+        if FLAGS.train_with_GaussianBlurr:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+                transforms.RandomHorizontalFlip(),
+                transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                ])
+
+        elif FLAGS.train_with_low_frequency:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+                transforms.RandomHorizontalFlip(),
+                transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                LowPass(),
+                ])
+
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ])
+        
         train_set = datasets.CIFAR10(FLAGS.dataset_path + FLAGS.dataset, train=True, download=download, transform=transform_train)
         test_set = datasets.CIFAR10(FLAGS.dataset_path + FLAGS.dataset, train=False, download=download, transform=transform_test)
+    
+    elif FLAGS.dataset == 'CIFAR100':
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.507075, 0.486549, 0.440918), (0.267334, 0.256438, 0.276150)),
+            ])
+        
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.507075, 0.486549, 0.440918), (0.267334, 0.256438, 0.276150)),
+            ])
+            
+        train_set = datasets.CIFAR100(FLAGS.dataset_path + FLAGS.dataset, train=True, download=download, transform=transform_train)
+        test_set = datasets.CIFAR100(FLAGS.dataset_path + FLAGS.dataset, train=False, download=download, transform=transform_test)
 
     elif FLAGS.dataset == 'SVHN':
         train_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, 
@@ -223,14 +237,12 @@ def get_data():
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
                                  download=download)
-    
+
     # create loaders
     ## it is important NOT to shuffle the test dataset since the adversarial variation 
     ## delta are going to be saved in memory in the same order as the test samples are. 
     
     train_loader = DataLoader(train_set, batch_size=FLAGS.batch_size, shuffle=True)
-    if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
-        FLAGS.batch_size = 32
     test_loader = DataLoader(test_set, batch_size=FLAGS.batch_size, shuffle=False)
 
     return train_loader, test_loader

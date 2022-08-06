@@ -109,7 +109,7 @@ def set_eval_mode(net, use_pop_stats):
 
 def get_epsilon_budget(dataset):
 
-    if dataset == 'CIFAR10':
+    if dataset == 'CIFAR10' or dataset == 'CIFAR100':
         # 2/255, 5/255, 8/255, 10/255, 12/255, 16/255, 0.1, 0.2
         epsilon_in = [0.0392, 0.0980, 0.1565, 0.1961, 0.2352, 0.3137, 0.5, 1]
 

@@ -227,12 +227,20 @@ def test(run_name,
                                             layer_to_test=FLAGS.layer_to_test)
 
     elif square_attack:
+        if FLAGS.dataset == 'SVHN':
+            n_queries = 1500
+        elif FLAGS.dataset == 'CIFAR10':
+            n_queries = 3000
+        elif FLAGS.dataset == 'CIFAR100':
+            n_queries = 4000
+
         sa_acc = test_utils.test_SquareAttack(net, 
                                               PATH_to_model, 
                                               test_loader,
                                               device,
                                               run_name, 
                                               epsilon=FLAGS.epsilon, 
+                                              n_queries=n_queries, 
                                               eval_mode=FLAGS.use_pop_stats)
         outputs.append(sa_acc)
 
