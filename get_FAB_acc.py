@@ -268,7 +268,7 @@ def get_FAB_acc(run_name, attack, verbose=True):
         correct_clean += (predicted_clean == Y_positive).sum().item()
 
         correct += (torch.logical_and(predicted == Y_positive, predicted_clean == Y_positive)).sum().item()
-        counter += X.shape[0]
+        counter += y.size(0)
 
         # calcluate norm if necessary
         if attack == 'FAB':
@@ -314,6 +314,6 @@ def get_FAB_acc(run_name, attack, verbose=True):
             # print("CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_dist, mean_dist_)
             print("IN-CORRECTLY CLASSIFIED - Mean L-Infinity distance: ", mean_misclassified_dist, mean_misclassified_dist_)
 
-    print('ACCURACY: ', correct/correct_clean)
+    print('ACCURACY: ', correct/counter)
 
-    return correct/correct_clean
+    return correct/counter

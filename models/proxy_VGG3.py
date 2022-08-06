@@ -292,7 +292,7 @@ class proxy_VGG3(nn.Module):
                             for i in range(model.weight.size(0)):
                                 adaptive_scaling[i] = torch.normal(model.running_var[i], 0.5)
                                 #print(adaptive_scaling)'''
-                            adaptive_scaling = 0.1*torch.ones_like(model.weight)
+                            adaptive_scaling = 1.5*torch.ones_like(model.weight)
                             model.weight.data = adaptive_scaling*model.weight.data
                         else:
                             model.weight.data = model.weight.data.clamp(-torch.sqrt(model.running_var), torch.sqrt(model.running_var))

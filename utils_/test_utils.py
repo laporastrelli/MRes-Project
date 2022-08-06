@@ -2308,9 +2308,14 @@ def get_parametric_frequency(model,
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
                     if use_scaling:
                         running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
-                        scaling = lambdas/torch.sqrt(running_var)
-                        sorted_lambdas = torch.argsort(scaling, descending=True)
-                        sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+                        if capacity_regularization:
+                            scaling = 1/torch.sqrt(running_var).cpu()
+                            sorted_lambdas = torch.argsort(scaling, descending=True)
+                            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+                        else:
+                            scaling = lambdas/torch.sqrt(running_var)
+                            sorted_lambdas = torch.argsort(scaling, descending=True)
+                            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
                 else:
                     if model_path.find('bitbucket')!=-1:
                         sorted_lambdas = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/IB_noise_calculation/' + run_name + '/layer_0/noise_ordered_lambdas.npy')
@@ -2447,9 +2452,14 @@ def get_parametric_frequency(model,
         sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
         if use_scaling:
             running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
-            scaling = lambdas/torch.sqrt(running_var)
-            sorted_lambdas = torch.argsort(scaling, descending=True)
-            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+            if capacity_regularization:
+                scaling = 1/torch.sqrt(running_var).cpu()
+                sorted_lambdas = torch.argsort(scaling, descending=True)
+                sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
+            else:
+                scaling = lambdas/torch.sqrt(running_var)
+                sorted_lambdas = torch.argsort(scaling, descending=True)
+                sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
  
         ordered_noise_std = noise_std[sorted_lambdas]
     
