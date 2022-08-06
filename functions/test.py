@@ -232,7 +232,8 @@ def test(run_name,
                                               test_loader,
                                               device,
                                               run_name, 
-                                              epsilon=FLAGS.epsilon)
+                                              epsilon=FLAGS.epsilon, 
+                                              eval_mode=FLAGS.use_pop_stats)
         outputs.append(sa_acc)
 
     elif HF_attenuate:

@@ -51,8 +51,10 @@ def main(argv):
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
         if FLAGS.pretrained_name.find('no_bn')!= -1:
             already_exists = True
-    if FLAGS.adversarial_test: FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
-    
+    if FLAGS.adversarial_test: 
+        if FLAGS.use_pop_stats:
+            FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
+    # if FLAGS.adversarial_test and FLAGS.dataset == 'CIFAR100': FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
 
