@@ -150,7 +150,7 @@ def main(argv):
             already_exists = True
     if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
         if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
-            already_exists = True 
+            already_exists = False 
     if FLAGS.adversarial_transferrability:
         print('Model ATTACKING: ', FLAGS.pretrained_name)
         print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
