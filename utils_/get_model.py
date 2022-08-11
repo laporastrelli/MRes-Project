@@ -10,6 +10,11 @@ from utils_ import utils_flags
 def get_model(model_name, where_bn, run_name='', train_mode=False):
     
     if model_name == 'ResNet50':
+        if FLAGS.dataset == 'CIFAR100':
+            n_classes = 100
+        else:
+            n_classes = 10
+
         if sum(where_bn)>1:
             print('BN')
             if int(FLAGS.version) == 2:
@@ -18,7 +23,7 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                 net = ResNet_v3.ResNet50(where_bn=where_bn)
             else:
                 print("Custom ResNet")
-                net = ResNet_v1.ResNet50(where_bn=where_bn, normalization=FLAGS.normalization)
+                net = ResNet_v1.ResNet50(where_bn=where_bn, normalization=FLAGS.normalization, num_classes=n_classes)
         else:
             print('no BN')
             print(where_bn)
@@ -33,7 +38,7 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                 if FLAGS.use_scaling:
                     net = ResNet_v1_Scaling.ResNet50(where_bn=where_bn, use_scaling=True)
                 else:
-                    net = ResNet_v1.ResNet50(where_bn=where_bn)
+                    net = ResNet_v1.ResNet50(where_bn=where_bn, num_classes=n_classes)
         
         if FLAGS.capacity_regularization or FLAGS.rank_init or FLAGS.track_rank:
             print('Training/Testing with capacity regularization ...')
