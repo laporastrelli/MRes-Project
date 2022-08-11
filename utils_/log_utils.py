@@ -162,6 +162,8 @@ def get_csv_path(model_name):
             where_noise += '_scaled_norm'
         elif FLAGS.scaled_noise_total:
             where_noise += '_scaled_total'
+        elif FLAGS.scaled_lambda:
+            where_noise += '_scaled_lambda'
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_' \
                             + noise_var_str + '_' + where_noise + '.csv' 

@@ -47,6 +47,7 @@ flags.DEFINE_bool('get_max_indexes', False, 'analysis involving CKA and capacity
 flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_norm', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_total', False, 'noise scaling based on total fixed capacity')
+flags.DEFINE_bool('scaled_lambda', False, 'noise scaling based on total lambda value')
 
 flags.DEFINE_string('channel_transfer', '', 'implement feature transfer for testing')
 flags.DEFINE_integer('n_channels_transfer', 0, 'number of channels to transfer')
