@@ -112,7 +112,8 @@ class proxy_VGG(nn.Module):
             if isinstance(model, torch.nn.modules.conv.Conv2d):
                 x = model(x)
                 if self.verbose:
-                    self.activations['BN_' + str(conv_count)] = x 
+                    #self.activations['BN_' + str(conv_count)] = x 
+                    pass
                 
                 if len(ch_activation)> 0 and self.get_bn_int_from_name() not in [100, 1]:
                     ch, bn_idx, activation = ch_activation
@@ -132,7 +133,7 @@ class proxy_VGG(nn.Module):
                 if self.verbose and self.get_bn_int_from_name() in [100, 1]:
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                     self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
-                    self.activations['BN_' + str(bn_count)] = x 
+                    #self.activations['BN_' + str(bn_count)] = x 
                     self.bn_parameters['BN_' + str(bn_count)] = model.weight
                     self.test_variance['BN_' + str(bn_count)] = var_test
                 

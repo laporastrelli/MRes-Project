@@ -81,11 +81,9 @@ def train (train_loader,
                 opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
                 n_epochs = 150
                 grad_clip = False
-                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1)
-
-                        # option for partial (or none)-BN training
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+            
             else: 
-                print('èèèèèèèèèèèèèèèèèèèèèèèè')
                 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau
                 val = 1
                 if val in FLAGS.where_bn and FLAGS.where_bn.index(1) == 2:
@@ -96,7 +94,8 @@ def train (train_loader,
                 n_epochs = 150
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', patience=10)
                 grad_clip = True
-                grad_clip_val = 0.1  
+                grad_clip_val = 0.1
+            
         
         if FLAGS.dataset == 'CIFAR100':
             opt_func = optim.SGD
@@ -198,6 +197,8 @@ def train (train_loader,
             weight_decay=5e-4
             grad_clip = False
             lr_ = 0.01
+            if model_name.find('VGG16')!= -1 and (batch_norm and sum(FLAGS.where_bn)>1):
+                lr_ = 0.05
             if FLAGS.normalization == 'ln' or FLAGS.nonlinear_lambda or FLAGS.dropout_lambda:
                 lr_ = 0.001
             elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
@@ -397,7 +398,8 @@ def train (train_loader,
                     else:
                         layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
                     for _, idx in enumerate(bn_idx):
-                        weights = model.features[idx].weight
+                        if model_name.find('VGG')!= -1:
+                            weights = model.features[idx].weight
                         if i == 0 and epoch_num == 0:
                             regularizer = LA.norm(weights, 2)*0
                         else:

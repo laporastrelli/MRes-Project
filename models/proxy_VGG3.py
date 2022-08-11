@@ -381,7 +381,6 @@ class proxy_VGG3(nn.Module):
 
     def set_verbose(self, verbose):
         self.verbose = verbose
-
     
     def get_bn_parameters(self, get_variance=False):
         bn_count = 0
@@ -391,7 +390,7 @@ class proxy_VGG3(nn.Module):
                        "Previous module should be Conv2d"
                 self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
                 if get_variance:
-                    self.running_variances['BN_' + str(bn_count)] = model.running_var.cpu().detach()
+                    self.running_variances['BN_' + str(bn_count)] = model.running_var.detach()
                 bn_count +=1
         return self.bn_parameters
     

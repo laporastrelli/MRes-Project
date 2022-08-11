@@ -3,6 +3,7 @@ from pdb import runcall
 from sqlite3 import Timestamp
 from tkinter.tix import Tree
 from bleach import clean
+from cv2 import mean
 import torch.nn as nn
 import torch
 import os
@@ -16,6 +17,7 @@ import time
 
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
+from zmq import EVENT_CLOSE_FAILED
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity, pgd_linf_total_capacity
 from utils_ import get_model
 from utils_.miscellaneous import get_minmax, get_path2delta, get_bn_int_from_name, CKA, cosine_similarity, get_model_name
@@ -350,15 +352,18 @@ def calculate_capacity(net,
                        attack,
                        epsilon, 
                        num_iter,
-                       capacity_mode='lambda_based',
+                       capacity_mode='variance_based',
                        use_pop_stats=True,
-                       batch=0,
+                       batch=10,
                        noise_variance=0,
                        capacity_regularization=False,
                        beta=0,
                        regularization_mode='euclidean',
                        save_analysis=True, 
-                       get_BN_names=False):
+                       get_BN_names=False, 
+                       net_analysis=True, 
+                       distribution_analysis=False, 
+                       index_order_analysis=False):
     
     print('Calculating Capacity')
 
@@ -380,7 +385,7 @@ def calculate_capacity(net,
     # create root directory for saving content
     if save_analysis:
         path_out = './results/'
-        path_out += get_model_name(run_name) +'/'
+        path_out += get_model_name(run_name) + '/'
         if use_pop_stats:
             eval_mode_str = 'eval'
         else:
@@ -414,74 +419,167 @@ def calculate_capacity(net,
 
     # variance-based capacity calculation
     elif capacity_mode == 'variance_based':
-        for i, data in enumerate(test_loader, 0):
-            if i == batch:
+        if net_analysis:
+            net_change = np.zeros((batch, len(layer_key)))
+            for i, data in enumerate(test_loader, 0):
+                if i < batch:
+                    print('Batch: ', i)
+                    X, y = data
+                    X, y = X.to(device), y.to(device)
+
+                    net.set_verbose(verbose=True)
+                    _, capacities, _ = pgd_linf_capacity(net, 
+                                                        X, 
+                                                        y, 
+                                                        epsilon, 
+                                                        max_tensor, 
+                                                        min_tensor, 
+                                                        alpha=epsilon/10, 
+                                                        num_iter=num_iter, 
+                                                        layer_key=layer_key)
+
+                    net.set_verbose(verbose=False) 
+                    for chn, key_ in enumerate(layer_key):
+                        net_change[i, chn] = np.mean(capacities[key_][-1].numpy() - capacities[key_][0].numpy())
+            
+            mean_net_change = np.mean(net_change, axis=0)
+            var_net_change = np.var(net_change, axis=0)
+
+            path_out += 'all_layers/clean_test/global_analysis' + '/' 
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out +=  run_name + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            np.save(path_out + '/mean_net_change_' + str(epsilon).replace('.', '') + '.npy', mean_net_change)
+            np.save(path_out + '/var_net_change' + str(epsilon).replace('.', '') + '.npy', var_net_change)
+        
+        elif distribution_analysis:
+            for i, data in enumerate(test_loader, 0):
+                if i < batch:
+                    print('Batch: ', i)
+                    X, y = data
+                    X, y = X.to(device), y.to(device)
+
+                    net.set_verbose(verbose=True)
+                    _, capacities, _ = pgd_linf_capacity(net, 
+                                                        X, 
+                                                        y, 
+                                                        epsilon, 
+                                                        max_tensor, 
+                                                        min_tensor, 
+                                                        alpha=epsilon/10, 
+                                                        num_iter=num_iter, 
+                                                        layer_key=layer_key)
+                    net.set_verbose(verbose=False) 
+
+                    path_out += 'all_layers/clean_test/distribution_analysis' + '/' 
+                    if not os.path.isdir(path_out): os.mkdir(path_out)
+                    path_out +=  run_name + '/'
+                    if not os.path.isdir(path_out): os.mkdir(path_out)
+                    path_out +=  'batch_' + str(i) + '/' 
+                    if not os.path.isdir(path_out): os.mkdir(path_out)
+
+                    for chn, key_ in enumerate(layer_key):
+                        temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+                        np.save(path_out + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
+        
+        elif index_order_analysis:
+            if i < batch:
+                print('Batch: ', i)
                 X, y = data
                 X, y = X.to(device), y.to(device)
-                break
-        net.set_verbose(verbose=True)
-        _, capacities, _ = pgd_linf_capacity(net, 
-                                             X, 
-                                             y, 
-                                             epsilon, 
-                                             max_tensor, 
-                                             min_tensor, 
-                                             alpha=epsilon/10, 
-                                             num_iter=num_iter, 
-                                             layer_key=layer_key)
-        net.set_verbose(verbose=False) 
-        if save_analysis:
-            if len(layer_key)==1:
-                if layer_key[0] == 'BN_0':
-                    path_out += 'first_layer/'
-                elif layer_key[0] == 'BN_1':
-                    path_out += 'second_layer/'
-            else: path_out += 'all_layers/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
 
-            if net.get_noisy_mode():
-                if noise_variance > 0.05:
-                    path_out += 'noisy_test/'
-                else:
-                    path_out += 'small_noisy_test/'
-            else: path_out += 'clean_test/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
+                net.set_verbose(verbose=True)
+                _, capacities, _ = pgd_linf_capacity(net, 
+                                                    X, 
+                                                    y, 
+                                                    epsilon, 
+                                                    max_tensor, 
+                                                    min_tensor, 
+                                                    alpha=epsilon/10, 
+                                                    num_iter=num_iter, 
+                                                    layer_key=layer_key)
+                net.set_verbose(verbose=False) 
 
-            path_out += 'BATCH_' + str(batch) + '/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
-            
-            for folder_name in layer_key:
-                if not os.path.isdir(path_out + folder_name): os.mkdir(path_out + folder_name)
-                sub_folder_name = str(epsilon).replace('.', '')
-                if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
-                    os.mkdir(path_out + folder_name + '/' + sub_folder_name)
-                t = 0
-                fig = plt.figure()
+                path_out += 'all_layers/clean_test/distribution_analysis' + '/' 
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                path_out +=  run_name + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                path_out +=  'batch_' + str(i) + '/' 
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+
+                for chn, key_ in enumerate(layer_key):
+                    temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+
+        else:
+            for i, data in enumerate(test_loader, 0):
+                if i == batch:
+                    X, y = data
+                    X, y = X.to(device), y.to(device)
+                    break
+            net.set_verbose(verbose=True)
+            _, capacities, _ = pgd_linf_capacity(net, 
+                                                X, 
+                                                y, 
+                                                epsilon, 
+                                                max_tensor, 
+                                                min_tensor, 
+                                                alpha=epsilon/10, 
+                                                num_iter=num_iter, 
+                                                layer_key=layer_key)
+            net.set_verbose(verbose=False) 
+            if save_analysis:
                 if len(layer_key)==1:
-                    key = layer_key[0]
-                else:
-                    key = folder_name
-                for temp in capacities[key]:
-                    x_axis = [t]
-                    for x_, y_ in zip(x_axis, [temp]):
-                        plt.scatter([x_] * len(y_), y_)
-                        plt.xlabel('PGD steps')
-                        plt.ylabel('Capacity Estimate')
-                        if net.get_noisy_mode():
-                            noisy_str = 'noisy - ' + r'$\sigma^2=$' + str(noise_variance)
-                        else:
-                            noisy_str = 'deterministic'
-                        if get_bn_int_from_name(run_name) == 100:
-                            title_str = get_model_name(run_name) + ' ' + 'FULL-BN' + ' ' + noisy_str
-                        else:
-                            title_str = get_model_name(run_name) + ' ' + 'BLOCK' + '-' + \
-                                        str(get_bn_int_from_name(run_name)-1) + \
-                                        ' ' + noisy_str
-                        plt.title(title_str)
-                        fig.savefig(path_out + folder_name + '/' \
-                            + sub_folder_name + '/' + run_name + '_capacity.png') 
-                    t+=1
-                plt.close(fig)
+                    if layer_key[0] == 'BN_0':
+                        path_out += 'first_layer/'
+                    elif layer_key[0] == 'BN_1':
+                        path_out += 'second_layer/'
+                else: path_out += 'all_layers/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+
+                if net.get_noisy_mode():
+                    if noise_variance > 0.05:
+                        path_out += 'noisy_test/'
+                    else:
+                        path_out += 'small_noisy_test/'
+                else: path_out += 'clean_test/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+
+                path_out += 'BATCH_' + str(batch) + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                
+                for folder_name in layer_key:
+                    if not os.path.isdir(path_out + folder_name): os.mkdir(path_out + folder_name)
+                    sub_folder_name = str(epsilon).replace('.', '')
+                    if not os.path.isdir(path_out + folder_name + '/' + sub_folder_name):
+                        os.mkdir(path_out + folder_name + '/' + sub_folder_name)
+                    t = 0
+                    fig = plt.figure()
+                    if len(layer_key)==1:
+                        key = layer_key[0]
+                    else:
+                        key = folder_name
+                    for temp in capacities[key]:
+                        x_axis = [t]
+                        for x_, y_ in zip(x_axis, [temp]):
+                            plt.scatter([x_] * len(y_), y_)
+                            plt.xlabel('PGD steps')
+                            plt.ylabel('Capacity Estimate')
+                            if net.get_noisy_mode():
+                                noisy_str = 'noisy - ' + r'$\sigma^2=$' + str(noise_variance)
+                            else:
+                                noisy_str = 'deterministic'
+                            if get_bn_int_from_name(run_name) == 100:
+                                title_str = get_model_name(run_name) + ' ' + 'FULL-BN' + ' ' + noisy_str
+                            else:
+                                title_str = get_model_name(run_name) + ' ' + 'BLOCK' + '-' + \
+                                            str(get_bn_int_from_name(run_name)-1) + \
+                                            ' ' + noisy_str
+                            plt.title(title_str)
+                            fig.savefig(path_out + folder_name + '/' \
+                                + sub_folder_name + '/' + run_name + '_capacity.png') 
+                        t+=1
+                    plt.close(fig)
 
 def channel_transfer(net, 
                      model_path, 
@@ -686,7 +784,7 @@ def adversarial_test(net,
                      transfer_mode='capacity_based'):
 
     #net.load_state_dict(torch.load(model_path))
-    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:1'))
     net.to(device)
 
     ################## MODE SELECTION ##################
@@ -732,6 +830,8 @@ def adversarial_test(net,
     if run_name.find('VGG')!= -1:
         net.classifier.eval()
     ###############################################
+
+    print('EVAL MODE: ', not net.training)
 
 
     ################## VERBOSE ##################
@@ -1083,7 +1183,8 @@ def adversarial_test(net,
                                                             layer_key=layer_key)
 
                         # compute PGD 
-                        else:                           
+                        else:        
+                            print('Attacking with PGD (custom) ...')                   
                             delta = pgd_linf(net, 
                                              X, 
                                              y, 
@@ -1096,7 +1197,7 @@ def adversarial_test(net,
             
                     adv_inputs = X + delta[0]
                 
-                # ------ Advertorch PGD function
+                # ------ AdverTorch PGD function
                 else:
                     adversary = LinfPGDAttack(
                                     net, loss_fn=nn.CrossEntropyLoss(), eps=epsilon,
@@ -1107,11 +1208,14 @@ def adversarial_test(net,
             
             if len(delta) == 1:
                 if save:     
-                    path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack)
+                    path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack, epsilon)
+                    name_out = 'adversarial_delta_' + str(i) + '.pth'
+
+                    '''path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack)
                     eps_ = 'eps_' + str(epsilon).replace('.', '')
                     if not os.path.isdir(path + '/' + eps_ + '/'):
                         os.mkdir(path + '/' + eps_ + '/')
-                    torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth") 
+                    torch.save(delta[0], path + '/' + eps_ + "/adversarial_delta_" + str(i) + ".pth")''' 
                 
                 if use_pop_stats:
                     net.eval()
@@ -1913,6 +2017,7 @@ def IB_noise_calculation(model,
 
     # initiate model
     if run_name.find('VGG')!= -1:
+        n_channels = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512, 512, 512]
         model = proxy_VGG3(model, 
                            eval_mode=eval_mode,
                            device=device,
@@ -1926,8 +2031,9 @@ def IB_noise_calculation(model,
         # while for other configs we test only for the first layer
         if get_bn_int_from_name(run_name) in [100, 1]: 
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
-        else: noise_length = 64
-        model.noise_std = 0.3 + torch.zeros(noise_length, device=device, requires_grad=True) 
+        else: 
+            noise_length = n_channels[int(layer_to_test)]
+        model.noise_std = 0. + torch.zeros(noise_length, device=device, requires_grad=True) 
 
         # get channel variance
         if get_bn_int_from_name(run_name) in [100, 1]: 
@@ -1960,8 +2066,18 @@ def IB_noise_calculation(model,
         # initiate noise tensor (specific to first channel)
         noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         # model.noise_std  = torch.zeros(noise_length, device=device, requires_grad=True)
-        model.noise_std  = 0.15 * torch.ones(noise_length, device=device, requires_grad=True)
-
+        if int(layer_to_test) == 0:
+            noise_scaling = 0.5
+        elif int(layer_to_test) == 49:
+            noise_scaling = 0.4
+        elif int(layer_to_test) == 1:
+            noise_scaling = 0.4
+        elif int(layer_to_test) < 30:
+            noise_scaling = 0.2
+        else:
+            noise_scaling = 0.12
+        print('NOISE SCALING: ', noise_scaling)
+        model.noise_std  = noise_scaling * torch.ones(noise_length, device=device, requires_grad=True)
         # get channel variance
         running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
     
@@ -1991,8 +2107,12 @@ def IB_noise_calculation(model,
     if not os.path.isdir(root_path): os.mkdir(root_path)
 
     if use_scaling:
-        print('Use Bn scaling for ordering')
+        print('Use **BN** scaling for ordering')
         root_path += 'BN_scaling' + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+    else:
+        print('Use **Lambda** scaling for ordering')
+        root_path += 'lambda_scaling' + '/'
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
     # set eval mode
@@ -2004,6 +2124,16 @@ def IB_noise_calculation(model,
     iterations = 100
 
     accs = []
+
+    fig = plt.figure()
+    running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
+    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].cpu()
+    plt.scatter(lambdas, lambdas/torch.sqrt(running_var.cpu()))
+    plt.xlabel(r'$\lambda$' + '-values')
+    plt.ylabel(r'$\lambda - \sigma$' + ' ratio')
+    plt.title('Comparison of ' + r'$\lambda$' + ' and ' + r'$\sigma$' + ' scaling')
+    fig.savefig(root_path + 'BN_scaling_comparison.jpg')
+    plt.close()
 
     # calculate noise
     for j in range(iterations):
@@ -2024,6 +2154,14 @@ def IB_noise_calculation(model,
                 acc = correct/total
                 accs.append(acc)
                 print('Accuracy: ', correct/total)
+                fig = plt.figure()
+                plt.scatter(np.arange(len(accs)), accs)
+                plt.xlabel('Iteration')
+                plt.ylabel('Accuracy')
+                plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                fig.savefig(root_path + 'accuracy.jpg')
+                fig.savefig('./z_keep_track_noise_IB/keep_track_acc.jpg')
+                plt.close()
 
             # cross-entropy loss
             loss_ce = nn.CrossEntropyLoss()(yp,y)
@@ -2042,7 +2180,7 @@ def IB_noise_calculation(model,
             if i==0:
                 # get ordering of the channels depending on the mode chosen (use_scaling or not)
                 if get_bn_int_from_name(run_name) in [100, 1]: 
-                    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+                    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].cpu()
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
                     if use_scaling:
@@ -2058,7 +2196,6 @@ def IB_noise_calculation(model,
                 # get noise transformation function depending on model
                 if run_name.find('ResNet')!= -1: noise_std = model.variance_function(model.noise_std) **2
                 elif run_name.find('VGG')!= -1: noise_std = (nn.functional.softplus(model.noise_std)) **2
-
                 # order channels depending on model config
                 if get_bn_int_from_name(run_name) in [100, 1]: ordered_noise_std = noise_std[sorted_lambdas]
                 else: ordered_noise_std = noise_std
@@ -2066,22 +2203,27 @@ def IB_noise_calculation(model,
                 # plot admissible noise variation against scaling (be it lambdas only or BN scaling overall)
                 # fig = plt.figure()
                 # fig, ax1 = plt.subplots() 
+                ###############################################################################################
                 fig = plt.figure(figsize=(6,5))
                 ax1 = fig.add_subplot(111)
 
                 if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(sorted_lambdas.size(0))
-                else: x_axis = np.arange(64)
+                else: x_axis = np.arange(len(n_channels[int(layer_to_test)]))
 
                 plt.scatter(x_axis, ordered_noise_std.cpu().detach().numpy(), c="b")
                 if get_bn_int_from_name(run_name) in [100, 1]:
                     ax2 = ax1.twinx()
                     ax2.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy(), c="orange")
-                    ax2.set_ylabel('BatchNorm Net Scaling')
+                    if use_scaling:
+                        ax2.set_ylabel('BatchNorm Net Scaling')
+                    else:
+                        ax2.set_ylabel(r'$\lambda$' + ' Scaling')
                 ax1.set_xlabel('Ordered Channel Index')
                 ax1.set_ylabel('Admissible Noise Variance')
 
                 plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+                plt.tight_layout()
 
                 fig.savefig(root_path + 'channel_noise_variance.jpg')
                 if os.path.isfile(root_path + 'channel_noise_variance.jpg'):
@@ -2095,9 +2237,69 @@ def IB_noise_calculation(model,
                 plt.scatter(np.arange(len(accs)), accs)
                 plt.xlabel('Iteration')
                 plt.ylabel('Accuracy')
-                plt.title(run_name.split('_')[0] + ' ' + 'layer' + str(layer_to_test))
+                # plt.title(run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.title('Channel Noise Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 fig.savefig(root_path + 'accuracy.jpg')
                 fig.savefig('./z_keep_track_noise_IB/keep_track_acc.jpg')
+                plt.close()
+
+                ###############################################################################################
+                fig = plt.figure(figsize=(6,5))
+                ax1 = fig.add_subplot(111)
+
+                avg_len = 8
+                mean_val = []
+                mean_lambda_val = []
+                std_val = []
+                std_lambda_val = []
+                temporary = ordered_noise_std.cpu().detach().numpy()
+                temporary2 = sorted_lambdas_values.cpu().detach().numpy()
+
+                for i in range(0, noise_length, avg_len):
+                    #print(ordered_noise_std.cpu().detach().numpy())
+                    idx_1 = i
+                    idx_2 = i + avg_len
+
+                    mean_val.append(np.mean(temporary[idx_1:idx_2]))
+                    std_val.append(np.std(temporary[idx_1:idx_2]))
+
+                    mean_lambda_val.append(np.mean(temporary2[idx_1:idx_2]))
+                    std_lambda_val.append(np.std(temporary2[idx_1:idx_2]))
+                
+                mean_val = np.array(mean_val)
+                mean_lambda_val = np.array(mean_lambda_val)
+                std_val = np.array(std_val)
+                std_lambda_val = np.array(std_lambda_val)
+                
+                if get_bn_int_from_name(run_name) in [100, 1]: x_axis = np.arange(0, sorted_lambdas.size(0), avg_len)
+                else: x_axis = np.arange(0, n_channels[int(layer_to_test)], avg_len)
+
+                ax1.scatter(x_axis, mean_val, c='b')
+                ax1.plot(x_axis, mean_val, c='b')
+                ax1.fill_between(x_axis, mean_val-std_val, mean_val+std_val, alpha=0.5)
+                ax1.set_xlabel('Ordered Channel Index')
+                ax1.set_ylabel('Gaussian Noise Standard Deviation')
+
+                if get_bn_int_from_name(run_name) in [100, 1]:
+                    ax2 = ax1.twinx()
+                    ax2.scatter(x_axis, mean_lambda_val, c="orange")
+                    ax2.plot(x_axis, mean_lambda_val, c="orange")
+                    #ax2.fill_between(x_axis, mean_lambda_val-std_lambda_val, mean_lambda_val+std_lambda_val, alpha=0.5)
+                    if use_scaling:    
+                        ax2.set_ylabel('BatchNorm Net Scaling')
+                    else:
+                        ax2.set_ylabel(r'$\lambda$' + ' Scaling')
+                
+                plt.title('Channel Noise Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
+                plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+                plt.tight_layout()
+
+                fig.savefig(root_path + 'gaussian_noise_std_averaged.jpg')
+                if os.path.isfile(root_path + 'gaussian_noise_std_averaged.jpg'):
+                    print('Success: Figure saved')
+                else:
+                    print('SaveError: Unable to save Figure')
+                fig.savefig('./z_keep_track_noise_IB/keep_track_IB_noise_av.jpg')
                 plt.close()
 
             # noise update
@@ -2117,12 +2319,14 @@ def IB_noise_calculation(model,
     # if the config has Batch Norm at the first layer then we save the noise ordered based on lambdas
     # but we also care to save the ordering of the noise itself to comapre it with that of lambda
     if get_bn_int_from_name(run_name) in [100, 1]: 
-        lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+        lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].cpu()
         if use_scaling:
             scaling = lambdas/torch.sqrt(running_var.cpu())
             sorted_lambdas = torch.argsort(scaling, descending=True)
+            sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
         else:
             sorted_lambdas = torch.argsort(lambdas, descending=True)
+            sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)
 
         ordered_noise_std = noise_std[sorted_lambdas]
         
@@ -2131,6 +2335,7 @@ def IB_noise_calculation(model,
 
     np.save(root_path + 'ordered_channel_noise_variance.npy', np.array(ordered_noise_std.cpu().detach()))
     np.save(root_path + 'noise_ordered_lambdas.npy', np.array(noise_ordered_channels.cpu().detach()))
+    np.save(root_path + 'sorted_scaling_values.npy', np.array(sorted_lambdas_values.cpu().detach()))
 
     max_ch_var = torch.max(running_var).cpu().detach()
     noise_std = nn.functional.softplus(model.noise_std).cpu().detach()
@@ -2147,7 +2352,7 @@ def get_parametric_frequency(model,
                              get_parametric_frequency_MSE_only=False,
                              get_parametric_frequency_MSE_CE=False,
                              capacity_regularization=False, 
-                             use_scaling=True):
+                             use_scaling=False):
     
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
@@ -2255,7 +2460,7 @@ def get_parametric_frequency(model,
     accs = [] 
 
     fig = plt.figure()
-    running_var = model.get_running_variance()['BN_' + str(layer_to_test)]
+    running_var = model.get_running_variance()['BN_' + str(layer_to_test)].cpu()
     lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
     plt.scatter(lambdas, lambdas/torch.sqrt(running_var))
     plt.xlabel(r'$\lambda$' + '-values')
@@ -2313,7 +2518,7 @@ def get_parametric_frequency(model,
                             sorted_lambdas = torch.argsort(scaling, descending=True)
                             sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
                         else:
-                            scaling = lambdas/torch.sqrt(running_var)
+                            scaling = lambdas/torch.sqrt(running_var).cpu()
                             sorted_lambdas = torch.argsort(scaling, descending=True)
                             sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
                 else:
@@ -2337,8 +2542,10 @@ def get_parametric_frequency(model,
                 if get_bn_int_from_name(run_name) in [100, 1]:
                     ax2 = ax1.twinx()
                     ax2.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy(), c="orange")
-                    ax2.set_ylabel('BatchNorm Net Scaling')
-                    # plt.scatter(x_axis, sorted_lambdas_values.cpu().detach().numpy())
+                    if use_scaling:
+                        ax2.set_ylabel('BatchNorm Net Scaling')
+                    else:
+                        ax2.set_ylabel(r'$\lambda$' + ' Scaling')
                 ax1.set_xlabel('Ordered Channel Index')
                 ax1.set_ylabel('Gaussian Noise Standard Deviation')
 
@@ -2399,7 +2606,10 @@ def get_parametric_frequency(model,
                     ax2.scatter(x_axis, mean_lambda_val, c="orange")
                     ax2.plot(x_axis, mean_lambda_val, c="orange")
                     #ax2.fill_between(x_axis, mean_lambda_val-std_lambda_val, mean_lambda_val+std_lambda_val, alpha=0.5)
-                    ax2.set_ylabel('BatchNorm Net Scaling')
+                    if use_scaling:
+                        ax2.set_ylabel('BatchNorm Net Scaling')
+                    else:
+                        ax2.set_ylabel(r'$\lambda$' + ' Scaling')
                 
                 plt.title('Channel Frequency Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
@@ -2457,7 +2667,7 @@ def get_parametric_frequency(model,
                 sorted_lambdas = torch.argsort(scaling, descending=True)
                 sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
             else:
-                scaling = lambdas/torch.sqrt(running_var)
+                scaling = lambdas/torch.sqrt(running_var).cpu()
                 sorted_lambdas = torch.argsort(scaling, descending=True)
                 sorted_lambdas_values, _ = torch.sort(scaling, descending=True)
  
@@ -2775,6 +2985,8 @@ def test_SquareAttack(model,
     # set eval mode for inference 
     if eval_mode: model.eval()
 
+    print('EVAL MODE: ', not model.training)
+
     # getting min and max pixel values to be used in PGD for clamping
     min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
 
@@ -2877,4 +3089,102 @@ def HF_attenuate(model,
     
     return correct_s/total
 
+def adversarial_transferrability(model, 
+                                 model_path, 
+                                 model_2, 
+                                 model_path_2,
+                                 model_tag,
+                                 PATH_to_deltas_,
+                                 test_loader, 
+                                 device, 
+                                 run_name,
+                                 run_name_2,
+                                 attack,
+                                 epsilon,
+                                 num_iter,
+                                 eval_mode=True):
+
+    print('Attack: ', attack)
+    print('Epsilon: ', epsilon)
+    print('--------------------------')
+    print('Model ATTACKING: ', run_name.split('_')[0] + '_' + run_name.split('_')[1])
+    print('Model being ATTACKED: ', run_name_2.split('_')[0] + '_' + run_name_2.split('_')[1])
+
+    # load model from which attacks are transferred
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.to(device)     
     
+    # set eval mode
+    if eval_mode: model.eval()
+    if run_name.find('VGG')!= -1: model.classifier.eval()
+    print('EVAL MODE: ', not model.training)
+    
+    # getting min and max pixel values to be used in PGD for clamping
+    min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+
+    # helper variables
+    total = 0
+    correct_s = 0
+    correct_clean = 0
+
+    # attack model and save pertrubations
+    for i, data in enumerate(test_loader, 0):
+        X, y = data
+        X, y = X.to(device), y.to(device)
+
+        # get path to existing perturbations
+        path = get_path2delta(PATH_to_deltas_, model_tag, run_name, attack, epsilon)
+
+        # perform PGD if not existent already
+        name_out = 'adversarial_delta_' + str(i) + '.pth'
+        
+        if not os.path.isfile(path + name_out):
+            # perform PGD
+            delta = pgd_linf(model, 
+                             X, 
+                             y, 
+                             epsilon, 
+                             max_tensor, 
+                             min_tensor,
+                             alpha=epsilon/10, 
+                             num_iter=num_iter, 
+                             noise_injection=False) 
+
+            # save perturbations
+            torch.save(delta[0], path + name_out)
+            # create adversarial examples
+            adv_inputs = X + delta[0].to(device)
+            input = adv_inputs
+
+        # if the perturbations of the model already exist in memory just load the, 
+        else:
+            delta = torch.load(path + name_out)
+            input = X + delta.to(device)
+        
+        # now test the obtained perturbations on the second model
+        # load model from which attacks are transferred
+        model_2.load_state_dict(torch.load(model_path_2, map_location='cpu'))
+        model_2.to(device)     
+        
+        # set eval mode
+        if eval_mode: model_2.eval()
+        if run_name_2.find('VGG')!= -1: model_2.classifier.eval()
+        # print('EVAL MODE: ', not model_2.training)
+
+        with torch.no_grad():
+            outputs_clean = model_2(X)
+            outputs = model_2(input)
+            
+        _, predicted_clean = torch.max(outputs_clean.data, 1)
+        _, predicted = torch.max(outputs.data, 1)
+        
+        #print('clean ------------------------------: ', (predicted_clean == y).sum().item())
+        #print('adversarial ------------------------------: ', (predicted == y).sum().item())
+
+        total += y.size(0)
+        correct_clean += (predicted_clean == y).sum().item()
+        correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+
+    print('Adversarial transferred accuracy: ', correct_s/total)
+
+    return correct_s/total

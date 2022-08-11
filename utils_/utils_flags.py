@@ -95,6 +95,11 @@ flags.DEFINE_bool('dropout_lambda', False, 'train with bounded bounded constrain
 flags.DEFINE_bool('free_lambda', False, 'train with bounded bounded constraint with non-trainable lambda but adaptive')
 flags.DEFINE_bool('uniform_lambda', False, 'train with uniform lambda')
 
+flags.DEFINE_bool('use_bn_scaling', False, 'test IB noise with BN scaling')
+
+flags.DEFINE_bool('adversarial_transferrability', False, 'adversarial transferrability mode')
+flags.DEFINE_string('model_name_to_attack', '', 'pretrained model name in adversarial_transferrability mode') 
+flags.DEFINE_string('pretrained_name_to_attack', '', 'pretrained model run name in adversarial_transferrability mode') 
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

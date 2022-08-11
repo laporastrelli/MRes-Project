@@ -54,9 +54,7 @@ class proxy_ResNet(nn.Module):
         self.bn1 = 0
         self.conv1 = 0
         ############################
-
-        print(self.net)
-
+        
         if self.eval_mode:
             net.eval()    
         
@@ -194,7 +192,7 @@ class proxy_ResNet(nn.Module):
         if 'bn1' in net_vars: 
             if self.verbose:
                 var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                self.capacity['BN_' + str(bn_count)] = ((var_test * (self.net.bn1.weight**2))/self.net.bn1.running_var).cpu().detach().numpy()
+                self.capacity['BN_' + str(bn_count)] = ((var_test * (self.net.bn1.weight**2))/self.net.bn1.running_var)
                 self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
             if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
             if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
@@ -202,6 +200,7 @@ class proxy_ResNet(nn.Module):
 
             bn_count += 1   
             self.bn1 = self.net.bn1(x)
+            #print(self.net.bn1.weight.requires_grad)
 
             if self.saliency_map:
                 self.bn1.retain_grad()
@@ -227,7 +226,7 @@ class proxy_ResNet(nn.Module):
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn1.weight**2))/block.bn1.running_var).cpu().detach().numpy()
+                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn1.weight**2))/block.bn1.running_var)
                         self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
@@ -240,7 +239,7 @@ class proxy_ResNet(nn.Module):
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn2.weight**2))/block.bn2.running_var).cpu().detach().numpy()
+                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn2.weight**2))/block.bn2.running_var)
                         self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
@@ -253,7 +252,7 @@ class proxy_ResNet(nn.Module):
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn3.weight**2))/block.bn3.running_var).cpu().detach().numpy()
+                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn3.weight**2))/block.bn3.running_var)
                         self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
@@ -267,7 +266,7 @@ class proxy_ResNet(nn.Module):
                         if isinstance(shortcut_layer, torch.nn.modules.batchnorm.BatchNorm2d):
                             if self.verbose:
                                 var_test = temp.var([0, 2, 3], unbiased=False).to(self.device)
-                                self.capacity['BN_' + str(bn_count)] = ((var_test * (shortcut_layer.weight**2))/shortcut_layer.running_var).cpu().detach().numpy()
+                                self.capacity['BN_' + str(bn_count)] = ((var_test * (shortcut_layer.weight**2))/shortcut_layer.running_var)
                                 self.activations['BN_' + str(bn_count)] = (temp).cpu().detach().numpy()
                             if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                             if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
@@ -302,9 +301,9 @@ class proxy_ResNet(nn.Module):
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
-            self.bn_parameters['BN_' + str(bn_count)] = self.net.bn1.weight
+            self.bn_parameters['BN_' + str(bn_count)] = self.net.bn1.weight.detach()
             if get_variance:
-                self.running_variances['BN_' + str(bn_count)] = self.net.bn1.running_var
+                self.running_variances['BN_' + str(bn_count)] = self.net.bn1.running_var.detach()
             bn_count += 1
             if get_names:
                 self.BN_names.append('BN_0')
@@ -323,27 +322,27 @@ class proxy_ResNet(nn.Module):
                 
                 # re-construct block
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn1.weight
+                    self.bn_parameters['BN_' + str(bn_count)] = block.bn1.weight.detach()
                     if get_variance:
-                        self.running_variances['BN_' + str(bn_count)] = block.bn1.running_var
+                        self.running_variances['BN_' + str(bn_count)] = block.bn1.running_var.detach()
                     bn_count += 1
                     if get_names:
                         self.BN_names.append('BN_' + str(layer_count) + '_' + str(bn_count_internal))
                         bn_count_internal += 1
 
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn2.weight
+                    self.bn_parameters['BN_' + str(bn_count)] = block.bn2.weight.detach()
                     if get_variance:
-                        self.running_variances['BN_' + str(bn_count)] = block.bn2.running_var
+                        self.running_variances['BN_' + str(bn_count)] = block.bn2.running_var.detach()
                     bn_count += 1
                     if get_names:
                         self.BN_names.append('BN_' + str(layer_count) + '_' + str(bn_count_internal))
                         bn_count_internal += 1
 
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight
+                    self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight.detach()
                     if get_variance:
-                        self.running_variances['BN_' + str(bn_count)] = block.bn3.running_var
+                        self.running_variances['BN_' + str(bn_count)] = block.bn3.running_var.detach()
                     bn_count += 1
                     if get_names:
                         self.BN_names.append('BN_' + str(layer_count) + '_' + str(bn_count_internal))
@@ -353,9 +352,9 @@ class proxy_ResNet(nn.Module):
                 if len(shortcut) > 0:
                     for shortcut_layer in shortcut:
                         if isinstance(shortcut_layer, torch.nn.modules.batchnorm.BatchNorm2d):
-                            self.bn_parameters['BN_' + str(bn_count)] = shortcut_layer.weight
+                            self.bn_parameters['BN_' + str(bn_count)] = shortcut_layer.weight.detach()
                             if get_variance:
-                                self.running_variances['BN_' + str(bn_count)] = shortcut_layer.running_var
+                                self.running_variances['BN_' + str(bn_count)] = shortcut_layer.running_var.detach()
                             bn_count += 1
                             if get_names:
                                 self.BN_names.append('BN_' + str(layer_count) + '_' + str(bn_count_internal) + '_skipcon')

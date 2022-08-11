@@ -179,26 +179,27 @@ def pgd_linf_capacity(model, X, y, epsilon, max_, min_, alpha, num_iter, layer_k
 
         for k, key in enumerate(layer_key):
             if t == 0:
-                # capacities[key] = model.get_capacity()[key]
-                activations[key] = model.get_activations()[key]
+                capacities[key] = model.get_capacity()[key].cpu().detach()
+                #activations[key] = model.get_activations()[key]
             else:
                 to_add = []
                 to_add_act = []
                 if t == 1: 
-                    # exists = [capacities[key]]
-                    exists_act = [activations[key]]
+                    exists = [capacities[key]]
+                    #exists_act = [activations[key]]
                 else:
-                    # exists = capacities[key]
-                    exists_act = activations[key]
-                for i in range(len(exists_act) + 1):
-                    if i < len(exists_act):
-                        # to_add.append(exists[i])
-                        to_add_act.append(exists_act[i])
+                    exists = capacities[key]
+                    #exists_act = activations[key]
+                for i in range(len(exists) + 1):
+                    if i < len(exists):
+                        to_add.append(exists[i])
+                        #to_add_act.append(exists_act[i])
                     else:
-                        # to_add.append(model.get_capacity()[key])
-                        to_add_act.append(model.get_activations()[key])
-                # capacities[key] = to_add
-                activations[key] = to_add_act
+                        to_add.append(model.get_capacity()[key].cpu().detach())
+                        #to_add_act.append(model.get_activations()[key])
+
+                capacities[key] = to_add
+                #activations[key] = to_add_act
 
             '''elif t == num_iter - 1:
                 print()'''

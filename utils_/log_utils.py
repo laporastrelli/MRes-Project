@@ -121,6 +121,12 @@ def get_csv_path(model_name):
         if not os.path.isdir(csv_path_dir + 'dropout_lambda/'):
             os.mkdir(csv_path_dir + 'dropout_lambda/')
         csv_path_dir = csv_path_dir + 'dropout_lambda/'
+    
+    if FLAGS.attacks_in[0] == 'Square':
+        if FLAGS.batch_size != 128:
+            if not os.path.isdir(csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/'):
+                os.mkdir(csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/')
+            csv_path_dir = csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/'
 
     ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
