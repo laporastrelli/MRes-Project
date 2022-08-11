@@ -40,7 +40,8 @@ def test(run_name,
          test_low_pass_robustness=False, 
          compare_frequency_domain=False, 
          square_attack=False, 
-         HF_attenuate=False):
+         HF_attenuate=False, 
+         adversarial_transferrability=False):
 
     FLAGS = flags.FLAGS
 
@@ -188,7 +189,8 @@ def test(run_name,
                                         run_name, 
                                         eval_mode=FLAGS.use_pop_stats, 
                                         layer_to_test=FLAGS.layer_to_test,
-                                        capacity_regularization=FLAGS.capacity_regularization)
+                                        capacity_regularization=FLAGS.capacity_regularization, 
+                                        use_scaling=FLAGS.use_bn_scaling)
     
     elif parametric_frequency:
         test_utils.get_parametric_frequency(net, 
@@ -230,9 +232,9 @@ def test(run_name,
         if FLAGS.dataset == 'SVHN':
             n_queries = 1500
         elif FLAGS.dataset == 'CIFAR10':
-            n_queries = 3000
+            n_queries = 2000
         elif FLAGS.dataset == 'CIFAR100':
-            n_queries = 4000
+            n_queries = 3500
 
         sa_acc = test_utils.test_SquareAttack(net, 
                                               PATH_to_model, 
@@ -256,6 +258,31 @@ def test(run_name,
                                          attenuate_HF=FLAGS.attenuate_HF)
 
         outputs.append(HF_acc)
+
+    elif adversarial_transferrability:
+        PATH_to_deltas = FLAGS.root_path + '/deltas_new/'
+
+        # get model to attack and corresponding address in memory
+        run_name_2 = FLAGS.pretrained_name_to_attack
+        model_name_2, where_bn_2 = get_model_specs(run_name_2)
+        net_2 = get_model(model_name_2, where_bn_2, run_name_2, train_mode=False)
+        PATH_to_model_2 = get_model_path(FLAGS.root_path, model_name_2, run_name_2)
+
+        transf_acc = test_utils.adversarial_transferrability(net, 
+                                                            PATH_to_model,
+                                                            net_2, 
+                                                            PATH_to_model_2,
+                                                            model_name, 
+                                                            PATH_to_deltas,
+                                                            test_loader,
+                                                            device,
+                                                            run_name, 
+                                                            run_name_2,
+                                                            attack=FLAGS.attacks_in[0], 
+                                                            epsilon=FLAGS.epsilon, 
+                                                            num_iter=FLAGS.PGD_iterations,
+                                                            eval_mode=FLAGS.use_pop_stats)
+        outputs.append(transf_acc)
 
     if len(outputs) == 1:
         return outputs[0]

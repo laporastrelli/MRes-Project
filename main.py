@@ -22,8 +22,7 @@ def main(argv):
     
     del argv
     
-    ######################################################### SETUP #########################################################
-
+    ######################################## SETUP #########################################
     # parse inputs 
     FLAGS = flags.FLAGS
     
@@ -45,9 +44,12 @@ def main(argv):
     if FLAGS.device is None:
         FLAGS.device = 'cuda:' + str(torch.cuda.current_device())
         FLAGS.device = 'cuda:0'
+    ################################################################################################
 
+    ####################################### EPSILON BUDGET #######################################
     # retrive dataset-corresponding epsilon budget
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
+    # retrieve noisy-mode-corresponding epsilon budget
     if FLAGS.test_noisy: 
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
         if FLAGS.pretrained_name.find('no_bn')!= -1:
@@ -59,7 +61,12 @@ def main(argv):
     # retrieve frequency-mode-corresponding epsilon budget
     if FLAGS.test_low_pass_robustness:
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:5]
-    
+    # retrieve adversarial_transferrability-mode-corresponding epsilon budget
+    if FLAGS.adversarial_transferrability:
+        FLAGS.epsilon_in = [FLAGS.epsilon_in[0]]
+    ################################################################################################
+
+    ####################################### Logistics #############################################
     # model name logistics
     if FLAGS.model_name.find('ResNet50_v') != -1: FLAGS.model_name = 'ResNet50'        
     # get BN locations from pretrained model name (for testing only)
@@ -69,6 +76,7 @@ def main(argv):
         FLAGS.bn_locations = get_bn_int_from_name(run_name=FLAGS.pretrained_name)
     # get model name, based on it determine one-hot encoded BN locations 
     model_name = FLAGS.model_name
+    print(FLAGS.model_name, FLAGS.bn_locations)
     bn_locations = get_bn_config_train(model_name=FLAGS.model_name, bn_int=FLAGS.bn_locations)
     FLAGS.load_pretrained = set_load_pretrained(FLAGS.train, FLAGS.test_run)
 
@@ -77,7 +85,7 @@ def main(argv):
     
     # dict selection based on mode
     if FLAGS.capacity_regularization:
-        FLAGS.epsilon_in = FLAGS.epsilon_in[0:2]
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'beta-lagrange', 'Test Accuracy', 'Epsilon Budget']
@@ -92,6 +100,7 @@ def main(argv):
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
+    ################################################################################################
 
     # save to results log if file not already saved
     if FLAGS.save_to_log:
@@ -124,14 +133,26 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
-            already_exists = True 
+        if FLAGS.use_pop_stats:
+            if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
+                already_exists = True 
+        else:
+            if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+                already_exists = True 
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
     if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
         if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
-            already_exists = False 
+            already_exists = True 
+    if FLAGS.adversarial_transferrability:
+        print('Model ATTACKING: ', FLAGS.pretrained_name)
+        print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
+        if str(FLAGS.pretrained_name.split('_')[0] + '_' + FLAGS.pretrained_name.split('_')[1]) == str(FLAGS.pretrained_name_to_attack.split('_')[0] + '_' + FLAGS.pretrained_name_to_attack.split('_')[1]):
+            already_exists = True 
+            print('The two models are the same')
+        else:
+            print('Good to go!')
 
     # display model info
     if FLAGS.verbose:
@@ -245,6 +266,38 @@ def main(argv):
 
         if FLAGS.compare_frequency_domain:
             _ = test(index, compare_frequency_domain=True) 
+        
+        if FLAGS.adversarial_transferrability:
+            FLAGS.epsilon = float(FLAGS.epsilon)
+            transfer_acc = test(index, adversarial_transferrability=True)
+
+            # get dict name of where it is stored in memory
+            transf_dict_name = 'trasfer_' + str(FLAGS.attacks_in[0]) + '_' + str(FLAGS.epsilon).replace('.', '') + '.npy'
+
+            # get name of key and sub-key
+            key_name_attacker = str(FLAGS.pretrained_name.split('_')[0] + '_' + FLAGS.pretrained_name.split('_')[1])
+            key_name_attacked = str(FLAGS.pretrained_name_to_attack.split('_')[0] + '_' + FLAGS.pretrained_name_to_attack.split('_')[1])
+            
+            # create and save dict (if it doesn't exist yet)
+            if not os.path.isfile(transf_dict_name):
+                transfer_dict = {key_name_attacker: {key_name_attacked: transfer_acc}}
+                np.save('./results/adversarial_transferrability/' + transf_dict_name, transfer_dict)
+
+            # update and save dict (if it already exists)
+            else:
+                transfer_dict = np.load('./results/adversarial_transferrability/' + transf_dict_name).item()
+                print(transfer_dict)
+                if key_name_attacker in list(transfer_dict.items()):
+                    if key_name_attacked in list(transfer_dict[key_name_attacker].items()):
+                        transfer_dict[key_name_attacker][key_name_attacked] += transfer_acc
+                    else:
+                        transfer_dict[key_name_attacker].update({key_name_attacked: transfer_acc})
+                else:
+                    to_update = {key_name_attacker: {key_name_attacked: transfer_acc}}
+                    transfer_dict.update(to_update)
+
+                # save dict
+                np.save('./results/adversarial_transferrability/' + transf_dict_name, transfer_dict)
 
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name

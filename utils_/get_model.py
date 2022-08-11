@@ -3,7 +3,7 @@ from tkinter.tix import Tree
 from absl.flags import FLAGS
 from matplotlib import use
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v1_SkipInit, VGG_scaled, ResNet_v1_Scaling, proxy_VGG_ln
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v3_SkipInit, VGG_scaled, ResNet_v1_Scaling, proxy_VGG_ln
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
@@ -29,7 +29,7 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
             else:
                 if FLAGS.use_SkipInit:
                     print('Training with SkipInit')
-                    net = ResNet_v1_SkipInit.ResNet50(where_bn=where_bn)
+                    net = ResNet_v3_SkipInit.ResNet50(where_bn=where_bn)
                 if FLAGS.use_scaling:
                     net = ResNet_v1_Scaling.ResNet50(where_bn=where_bn, use_scaling=True)
                 else:
@@ -51,12 +51,12 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
             if int(FLAGS.version) == 2:
                 net = ResNet_v2.Resnet18(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet18(where_bn=where_bn)
+                net = ResNet_v1.ResNet18(where_bn=where_bn, normalization=FLAGS.normalization)
         else:
             if int(FLAGS.version) == 2:
                 net = ResNet_v2.resnet18(where_bn=where_bn)
             else:
-                net = ResNet_v1.ResNet18(where_bn=where_bn)
+                net = ResNet_v1.ResNet18(where_bn=where_bn, normalization=FLAGS.normalization)
 
     elif model_name == 'VGG19':
         if FLAGS.dataset == 'CIFAR100':
