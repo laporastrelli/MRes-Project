@@ -72,7 +72,7 @@ def train (train_loader,
                 opt = optim.SGD(model.parameters(), lr=lr_,  momentum=0.9, weight_decay=5e-4)
                 n_epochs = 150
                 grad_clip = False
-                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1) 
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, [50, 100], gamma=0.1)
 
             elif FLAGS.use_SkipInit:
                 print('Using SkipInit with large Learning Rate ...')

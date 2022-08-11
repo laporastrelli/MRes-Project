@@ -132,6 +132,12 @@ def main(argv):
     if FLAGS.compare_frequency_domain:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
+    if FLAGS.adversarial_test and not FLAGS.train:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
+            already_exists = True 
+        else:
+            if get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
+                already_exists = True 
     if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
         if FLAGS.use_pop_stats:
             if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
@@ -230,7 +236,7 @@ def main(argv):
             adv_accs = dict()
             for attack in FLAGS.attacks_in:
                 FLAGS.attack = attack
-                if attack == 'PGD':
+                if attack == 'PGD' or attack == 'FGSM':
                     for eps in FLAGS.epsilon_in:
                         FLAGS.epsilon = float(eps)
                         dict_name = attack + '-' + str(FLAGS.epsilon)
