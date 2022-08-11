@@ -41,10 +41,12 @@ class noisy_VGG(nn.Module):
                  verbose=False, 
                  scaled_noise=False, 
                  scaled_noise_norm=False,
-                 scaled_noise_total=False):
+                 scaled_noise_total=False, 
+                 scaled_lambda=False):
 
         super(noisy_VGG, self).__init__()
 
+        self.eval_mode = eval_mode
         self.noise_variance = noise_variance
         self.device = device
         self.capacity_ = capacity_
@@ -58,6 +60,7 @@ class noisy_VGG(nn.Module):
         self.scaled_noise = scaled_noise
         self.scaled_noise_norm = scaled_noise_norm
         self.scaled_noise_total = scaled_noise_total
+        self.scaled_lambda = scaled_lambda
         self.noise_out = {}
         self.init_capacity = {}
         self.pgd_steps = 0
@@ -78,6 +81,8 @@ class noisy_VGG(nn.Module):
         ###########################################
 
     def forward(self, x, total_capacity=0, noise_in=0):
+
+        # if the model has no BN layer just add noise to each layer
         if self.run_name.find('no_bn') != -1:
             for _, model in enumerate(self.features):
                 if isinstance(model, torch.nn.modules.conv.Conv2d):
@@ -92,7 +97,8 @@ class noisy_VGG(nn.Module):
             
             x = self.avgpool(x)
             x = torch.flatten(x, 1)
-            out = self.classifier(x)                
+            out = self.classifier(x)  
+        # if the model contains any BN layer --> mode-dependent noise injection
         else:
             bn_count = 0
             for ii, model in enumerate(self.features):
@@ -127,9 +133,11 @@ class noisy_VGG(nn.Module):
                         else:
                             noise = torch.zeros_like(x)
                     else:
+                        # calculate capacity
                         capacity = (x.var([0,2,3], unbiased=False)*model.weight**2)/(model.running_var*self.noise_variance) 
-                        if self.verbose:
+                        if self.verbose: 
                             self.capacity['BN_' + str(bn_count)] = capacity
+                        # noise scaling
                         if self.scaled_noise or self.scaled_noise_norm:
                             if self.pgd_steps == 0:
                                 self.init_capacity['BN_' + str(bn_count)] = capacity 
@@ -146,6 +154,15 @@ class noisy_VGG(nn.Module):
                                         noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
                                 else:
                                     noise = torch.zeros_like(x)
+                        # lambda scaling of noise
+                        elif self.scaled_lambda:
+                            lambdas = model.weight.detach()
+                            noise_variance_d = ((lambdas - torch.min(lambdas))/(torch.max(lambdas) \
+                                                - torch.min(lambdas))) * self.noise_variance*torch.ones_like(lambdas)
+                            noise = torch.zeros_like(x)
+                            for d in range(x.size(1)):
+                                noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
+
                         elif total_capacity!=0 and self.scaled_noise_total:
                             if self.pgd_steps == 0:
                                 self.init_capacity['BN_' + str(bn_count)] = capacity 
@@ -206,5 +223,3 @@ class noisy_VGG(nn.Module):
         elif mode == 'scaled_total': 
             self.scaled_noise_norm = False
             self.scaled_noise_total =  True
-
-

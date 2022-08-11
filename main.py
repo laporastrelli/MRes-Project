@@ -51,8 +51,8 @@ def main(argv):
     FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
     # retrieve noisy-mode-corresponding epsilon budget
     if FLAGS.test_noisy: 
-        FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
-        if FLAGS.pretrained_name.find('no_bn')!= -1:
+        FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True
     # retrieve eval-mode-corresponding epsilon budget
     if FLAGS.adversarial_test: 

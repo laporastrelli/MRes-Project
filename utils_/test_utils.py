@@ -354,16 +354,16 @@ def calculate_capacity(net,
                        num_iter,
                        capacity_mode='variance_based',
                        use_pop_stats=True,
-                       batch=10,
+                       batch=1,
                        noise_variance=0,
                        capacity_regularization=False,
                        beta=0,
                        regularization_mode='euclidean',
                        save_analysis=True, 
                        get_BN_names=False, 
-                       net_analysis=True, 
+                       net_analysis=False, 
                        distribution_analysis=False, 
-                       index_order_analysis=False):
+                       index_order_analysis=True):
     
     print('Calculating Capacity')
 
@@ -419,6 +419,7 @@ def calculate_capacity(net,
 
     # variance-based capacity calculation
     elif capacity_mode == 'variance_based':
+        
         if net_analysis:
             net_change = np.zeros((batch, len(layer_key)))
             for i, data in enumerate(test_loader, 0):
@@ -455,6 +456,7 @@ def calculate_capacity(net,
         
         elif distribution_analysis:
             for i, data in enumerate(test_loader, 0):
+
                 if i < batch:
                     print('Batch: ', i)
                     X, y = data
@@ -472,44 +474,98 @@ def calculate_capacity(net,
                                                         layer_key=layer_key)
                     net.set_verbose(verbose=False) 
 
-                    path_out += 'all_layers/clean_test/distribution_analysis' + '/' 
-                    if not os.path.isdir(path_out): os.mkdir(path_out)
-                    path_out +=  run_name + '/'
-                    if not os.path.isdir(path_out): os.mkdir(path_out)
-                    path_out +=  'batch_' + str(i) + '/' 
-                    if not os.path.isdir(path_out): os.mkdir(path_out)
+                    path_to_save = path_out + 'all_layers/clean_test/distribution_analysis' + '/' 
+                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+                    path_to_save +=  run_name + '/'
+                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+                    path_to_save +=  'batch_' + str(i) + '/' 
+                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
 
+                    if run_name.find('VGG') != -1:
+                        layers_to_save = [0,1,2,5,8,10,12,15]
+                    else:
+                        layers_to_save = [0,1,2,10,20,30,39,49]
+                    keys_to_save = ['BN_' + str(i) for i in layers_to_save]
                     for chn, key_ in enumerate(layer_key):
-                        temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
-                        np.save(path_out + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
+                        if key_ in keys_to_save:
+                            temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+
+                            path_to_save_file =  path_to_save + key_ + '/' 
+                            if not os.path.isdir(path_to_save_file): os.mkdir(path_to_save_file)
+
+                            np.save(path_to_save_file + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
         
         elif index_order_analysis:
-            if i < batch:
-                print('Batch: ', i)
-                X, y = data
-                X, y = X.to(device), y.to(device)
+            if run_name.find('VGG') != -1:
+                layers_to_save = [0,1,2,5,8,10,12,15]
+            else:
+                layers_to_save = [0,1,2,10,20,30,39,49]
+            keys_to_save = ['BN_' + str(i) for i in layers_to_save]
 
-                net.set_verbose(verbose=True)
-                _, capacities, _ = pgd_linf_capacity(net, 
-                                                    X, 
-                                                    y, 
-                                                    epsilon, 
-                                                    max_tensor, 
-                                                    min_tensor, 
-                                                    alpha=epsilon/10, 
-                                                    num_iter=num_iter, 
-                                                    layer_key=layer_key)
-                net.set_verbose(verbose=False) 
+            capacity_diff = dict.fromkeys(keys_to_save, [])
 
-                path_out += 'all_layers/clean_test/distribution_analysis' + '/' 
-                if not os.path.isdir(path_out): os.mkdir(path_out)
-                path_out +=  run_name + '/'
-                if not os.path.isdir(path_out): os.mkdir(path_out)
-                path_out +=  'batch_' + str(i) + '/' 
-                if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out += 'all_layers/clean_test/index_order_analysis' + '/' 
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out +=  run_name + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
 
-                for chn, key_ in enumerate(layer_key):
-                    temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+            for i, data in enumerate(test_loader, 0):
+                if i < batch:
+                    print('Batch: ', i)
+                    X, y = data
+                    X, y = X.to(device), y.to(device)
+
+                    net.set_verbose(verbose=True)
+                    _, capacities, _ = pgd_linf_capacity(net, 
+                                                        X, 
+                                                        y, 
+                                                        epsilon, 
+                                                        max_tensor, 
+                                                        min_tensor, 
+                                                        alpha=epsilon/10, 
+                                                        num_iter=num_iter, 
+                                                        layer_key=layer_key)
+                    net.set_verbose(verbose=False) 
+
+                    for chn, key_ in enumerate(layer_key):
+                        sorted_idxs = torch.argsort(capacities[key_][0])
+                        final_capacity = capacities[key_][-1]
+                        temp = final_capacity[sorted_idxs].numpy()
+
+                        if batch > 1:
+                            if key_ in keys_to_save:
+                                if i == 0:
+                                    capacity_diff[key_] = temp
+                                else:
+                                    to_add = []
+                                    if i == 1: 
+                                        exists = [capacity_diff[key_]]
+                                    else:
+                                        exists = capacity_diff[key_]
+                                    for i in range(len(exists) + 1):
+                                        if i < len(exists):
+                                            to_add.append(exists[i])
+                                        else:
+                                            to_add.append(temp)
+                                    capacity_diff[key_] = to_add
+                        else: 
+                            if key_ in keys_to_save:
+                                temp = final_capacity[sorted_idxs].numpy()
+                                capacity_diff[key_] = temp
+                
+                for layer in list(capacity_diff.keys()):
+                    path_to_save = path_out + layer + '/'
+                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+
+                    if batch > 1:
+                        to_save_mean = np.mean(np.array(capacity_diff[layer]), axis=0)
+                        to_save_var = np.var(np.array(capacity_diff[layer]), axis=0)
+                    else:
+                        to_save_mean = np.array(capacity_diff[layer])
+
+                    np.save(path_to_save + 'diff_mean_eps' + str(epsilon).replace(',', '') + '.npy', to_save_mean)
+                    if batch > 1:
+                        np.save(path_to_save + 'diff_var_eps' + str(epsilon).replace(',', '') + '.npy', to_save_var)
 
         else:
             for i, data in enumerate(test_loader, 0):
@@ -773,6 +829,7 @@ def adversarial_test(net,
                      relative_accuracy=True,
                      scaled_noise_norm=False,
                      scaled_noise_total=False,
+                     scaled_lambda=False,
                      get_similarity=False, 
                      eval=True, 
                      custom=True,
@@ -800,7 +857,8 @@ def adversarial_test(net,
                             run_name=run_name, 
                             scaled_noise=scaled_noise, 
                             scaled_noise_norm=scaled_noise_norm, 
-                            scaled_noise_total=scaled_noise_total)
+                            scaled_noise_total=scaled_noise_total,
+                            scaled_lambda=scaled_lambda)
         if run_name.find('ResNet')!= -1:
             net = noisy_ResNet(net,
                             eval_mode=use_pop_stats,
