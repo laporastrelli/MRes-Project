@@ -42,7 +42,9 @@ class noisy_VGG(nn.Module):
                  scaled_noise=False, 
                  scaled_noise_norm=False,
                  scaled_noise_total=False, 
-                 scaled_lambda=False):
+                 scaled_lambda=False,
+                 noise_first_layer=False,
+                 noise_not_first_layer=False):
 
         super(noisy_VGG, self).__init__()
 
@@ -61,6 +63,8 @@ class noisy_VGG(nn.Module):
         self.scaled_noise_norm = scaled_noise_norm
         self.scaled_noise_total = scaled_noise_total
         self.scaled_lambda = scaled_lambda
+        self.noise_first_layer = noise_first_layer
+        self.noise_not_first_layer = noise_not_first_layer
         self.noise_out = {}
         self.init_capacity = {}
         self.pgd_steps = 0
@@ -137,7 +141,7 @@ class noisy_VGG(nn.Module):
                         capacity = (x.var([0,2,3], unbiased=False)*model.weight**2)/(model.running_var*self.noise_variance) 
                         if self.verbose: 
                             self.capacity['BN_' + str(bn_count)] = capacity
-                        # noise scaling
+
                         if self.scaled_noise or self.scaled_noise_norm:
                             if self.pgd_steps == 0:
                                 self.init_capacity['BN_' + str(bn_count)] = capacity 
@@ -154,7 +158,7 @@ class noisy_VGG(nn.Module):
                                         noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
                                 else:
                                     noise = torch.zeros_like(x)
-                        # lambda scaling of noise
+
                         elif self.scaled_lambda:
                             lambdas = model.weight.detach()
                             noise_variance_d = ((lambdas - torch.min(lambdas))/(torch.max(lambdas) \
@@ -177,6 +181,7 @@ class noisy_VGG(nn.Module):
                                 for d in range(x.size(1)):
                                     noise[:, d, :, :] = torch.normal(0, noise_variance_d[d].item(), size=x[:, d, :, :].size())
                                 self.noise_out['BN_' + str(bn_count)] = noise
+                        
                         else:   
                             noise = torch.normal(0, float(self.noise_variance), size=x.size())
     
@@ -193,6 +198,13 @@ class noisy_VGG(nn.Module):
                 x = model(x)
 
                 if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d) and FLAGS.noise_after_BN:
+                    if self.noise_first_layer:
+                        if bn_count > 1:
+                            noise = torch.zeros_like(x)
+                    elif self.noise_not_first_layer:
+                        if bn_count == 1:
+                            noise = torch.zeros_like(x)
+                    
                     x = x + noise.to(self.device)
             
             x = self.avgpool(x)
