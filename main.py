@@ -133,7 +133,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and not FLAGS.train:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True 
         else:
             if get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
@@ -278,32 +278,48 @@ def main(argv):
             transfer_acc = test(index, adversarial_transferrability=True)
 
             # get dict name of where it is stored in memory
-            transf_dict_name = 'trasfer_' + str(FLAGS.attacks_in[0]) + '_' + str(FLAGS.epsilon).replace('.', '') + '.npy'
+            transfer_dict_name = 'trasfer_' + str(FLAGS.attacks_in[0]) + '_' + str(FLAGS.epsilon).replace('.', '') + '.npy'
+            counter_dict_name = 'counter_' + str(FLAGS.attacks_in[0]) + '_' + str(FLAGS.epsilon).replace('.', '') + '.npy'
 
             # get name of key and sub-key
             key_name_attacker = str(FLAGS.pretrained_name.split('_')[0] + '_' + FLAGS.pretrained_name.split('_')[1])
             key_name_attacked = str(FLAGS.pretrained_name_to_attack.split('_')[0] + '_' + FLAGS.pretrained_name_to_attack.split('_')[1])
             
             # create and save dict (if it doesn't exist yet)
-            if not os.path.isfile(transf_dict_name):
+            if not os.path.isfile('./results/adversarial_transferrability/' + transfer_dict_name):
+
+                counter_dict = {key_name_attacker: {key_name_attacked: 1}}
+                np.save('./results/adversarial_transferrability/' + counter_dict_name, counter_dict)
+
                 transfer_dict = {key_name_attacker: {key_name_attacked: transfer_acc}}
-                np.save('./results/adversarial_transferrability/' + transf_dict_name, transfer_dict)
+                np.save('./results/adversarial_transferrability/' + transfer_dict_name, transfer_dict)
 
             # update and save dict (if it already exists)
             else:
-                transfer_dict = np.load('./results/adversarial_transferrability/' + transf_dict_name).item()
-                print(transfer_dict)
+                counter_dict = np.load('./results/adversarial_transferrability/' + counter_dict_name).item()
+                transfer_dict = np.load('./results/adversarial_transferrability/' + transfer_dict_name).item()
+
                 if key_name_attacker in list(transfer_dict.items()):
                     if key_name_attacked in list(transfer_dict[key_name_attacker].items()):
-                        transfer_dict[key_name_attacker][key_name_attacked] += transfer_acc
+                        counter_dict[key_name_attacker][key_name_attacked] += 1
+
+                        curr_mean = transfer_dict[key_name_attacker][key_name_attacked]
+                        updated_count = counter_dict[key_name_attacker][key_name_attacked]
+                        updated_mean = (((updated_count-1)/updated_count)*curr_mean) + transfer_acc/updated_count
+
+                        transfer_dict[key_name_attacker][key_name_attacked] += updated_mean
                     else:
+                        counter_dict[key_name_attacker].update({key_name_attacked: 1})
                         transfer_dict[key_name_attacker].update({key_name_attacked: transfer_acc})
                 else:
-                    to_update = {key_name_attacker: {key_name_attacked: transfer_acc}}
-                    transfer_dict.update(to_update)
+                    to_update_transfer = {key_name_attacker: {key_name_attacked: transfer_acc}}
+                    transfer_dict.update(to_update_transfer)
+                    to_update_counter = {key_name_attacker: {key_name_attacked: 1}}
+                    counter_dict.update(to_update_counter)
 
                 # save dict
-                np.save('./results/adversarial_transferrability/' + transf_dict_name, transfer_dict)
+                np.save('./results/adversarial_transferrability/' + transfer_dict_name, transfer_dict)
+                np.save('./results/adversarial_transferrability/' + counter_dict_name, counter_dict)
 
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name

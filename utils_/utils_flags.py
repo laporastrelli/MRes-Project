@@ -48,6 +48,9 @@ flags.DEFINE_bool('scaled_noise', False, 'decide whether to scale the input nois
 flags.DEFINE_bool('scaled_noise_norm', False, 'decide whether to scale the input noise based on capacity or not')
 flags.DEFINE_bool('scaled_noise_total', False, 'noise scaling based on total fixed capacity')
 flags.DEFINE_bool('scaled_lambda', False, 'noise scaling based on total lambda value')
+flags.DEFINE_bool('noise_first_layer', False, 'inject noise only at the very first layer')
+flags.DEFINE_bool('noise_not_first_layer', False, 'inject noise evrywhere but at the very first layer')
+
 
 flags.DEFINE_string('channel_transfer', '', 'implement feature transfer for testing')
 flags.DEFINE_integer('n_channels_transfer', 0, 'number of channels to transfer')
