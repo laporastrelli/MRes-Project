@@ -48,7 +48,7 @@ def model_setup(net,
                 run_name, 
                 noise_variance):
 
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## MODEL SELECTION ##################
@@ -354,15 +354,15 @@ def calculate_capacity(net,
                        num_iter,
                        capacity_mode='variance_based',
                        use_pop_stats=True,
-                       batch=1,
+                       batch=5,
                        noise_variance=0,
                        capacity_regularization=False,
                        beta=0,
                        regularization_mode='euclidean',
                        save_analysis=True, 
                        get_BN_names=False, 
-                       net_analysis=False, 
-                       distribution_analysis=False, 
+                       net_analysis=True, 
+                       distribution_analysis=True, 
                        index_order_analysis=True):
     
     print('Calculating Capacity')
@@ -384,7 +384,7 @@ def calculate_capacity(net,
 
     # create root directory for saving content
     if save_analysis:
-        path_out = './results/'
+        path_out = './gpucluster/SVHN/'
         path_out += get_model_name(run_name) + '/'
         if use_pop_stats:
             eval_mode_str = 'eval'
@@ -419,8 +419,8 @@ def calculate_capacity(net,
 
     # variance-based capacity calculation
     elif capacity_mode == 'variance_based':
-        
         if net_analysis:
+            path_to_save = ''
             net_change = np.zeros((batch, len(layer_key)))
             for i, data in enumerate(test_loader, 0):
                 if i < batch:
@@ -446,15 +446,16 @@ def calculate_capacity(net,
             mean_net_change = np.mean(net_change, axis=0)
             var_net_change = np.var(net_change, axis=0)
 
-            path_out += 'all_layers/clean_test/global_analysis' + '/' 
-            if not os.path.isdir(path_out): os.mkdir(path_out)
-            path_out +=  run_name + '/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_to_save = path_out + 'all_layers/clean_test/global_analysis' + '/' 
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+            path_to_save +=  run_name + '/'
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
 
-            np.save(path_out + '/mean_net_change_' + str(epsilon).replace('.', '') + '.npy', mean_net_change)
-            np.save(path_out + '/var_net_change' + str(epsilon).replace('.', '') + '.npy', var_net_change)
+            np.save(path_to_save + '/mean_net_change_' + str(epsilon).replace('.', '') + '.npy', mean_net_change)
+            np.save(path_to_save + '/var_net_change' + str(epsilon).replace('.', '') + '.npy', var_net_change)
         
-        elif distribution_analysis:
+        if distribution_analysis:
+            path_to_save = ''
             for i, data in enumerate(test_loader, 0):
 
                 if i < batch:
@@ -495,7 +496,8 @@ def calculate_capacity(net,
 
                             np.save(path_to_save_file + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
         
-        elif index_order_analysis:
+        if index_order_analysis:
+            path_to_save = ''
             if run_name.find('VGG') != -1:
                 layers_to_save = [0,1,2,5,8,10,12,15]
             else:
@@ -504,10 +506,10 @@ def calculate_capacity(net,
 
             capacity_diff = dict.fromkeys(keys_to_save, [])
 
-            path_out += 'all_layers/clean_test/index_order_analysis' + '/' 
-            if not os.path.isdir(path_out): os.mkdir(path_out)
-            path_out +=  run_name + '/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_to_save = path_out + 'all_layers/clean_test/index_order_analysis' + '/' 
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+            path_to_save +=  run_name + '/'
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
 
             for i, data in enumerate(test_loader, 0):
                 if i < batch:
@@ -554,8 +556,8 @@ def calculate_capacity(net,
                                 capacity_diff[key_] = temp
                 
                 for layer in list(capacity_diff.keys()):
-                    path_to_save = path_out + layer + '/'
-                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+                    path_to_save_out = path_to_save + layer + '/'
+                    if not os.path.isdir(path_to_save_out): os.mkdir(path_to_save_out)
 
                     if batch > 1:
                         to_save_mean = np.mean(np.array(capacity_diff[layer]), axis=0)
@@ -563,9 +565,9 @@ def calculate_capacity(net,
                     else:
                         to_save_mean = np.array(capacity_diff[layer])
 
-                    np.save(path_to_save + 'diff_mean_eps' + str(epsilon).replace(',', '') + '.npy', to_save_mean)
+                    np.save(path_to_save_out + 'diff_mean_eps' + str(epsilon).replace(',', '') + '.npy', to_save_mean)
                     if batch > 1:
-                        np.save(path_to_save + 'diff_var_eps' + str(epsilon).replace(',', '') + '.npy', to_save_var)
+                        np.save(path_to_save_out + 'diff_var_eps' + str(epsilon).replace(',', '') + '.npy', to_save_var)
 
         else:
             for i, data in enumerate(test_loader, 0):
