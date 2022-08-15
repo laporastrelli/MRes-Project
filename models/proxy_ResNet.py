@@ -18,7 +18,10 @@ class proxy_ResNet(nn.Module):
                 layer_to_test=0,
                 saliency_map=False, 
                 train_mode=False, 
-                regularization_mode=''):
+                regularization_mode='', 
+                bounded_lambda=False,
+                prune_mode='', 
+                prune_percentage=1.):
 
         super(proxy_ResNet, self).__init__()
 
@@ -37,7 +40,10 @@ class proxy_ResNet(nn.Module):
         self.eval_mode = eval_mode
         self.train_mode = train_mode
         self.regularization_mode = regularization_mode
+        self.bounded_lambda = bounded_lambda
         self.num_iterations = 0
+        self.prune_mode = prune_mode
+        self.prune_percentage = prune_percentage
 
         # saliency map mode
         self.saliency_map = saliency_map
@@ -51,10 +57,10 @@ class proxy_ResNet(nn.Module):
         self.layer_to_test = layer_to_test
 
         ############################
-        self.bn1 = 0
-        self.conv1 = 0
+        self.bn1_act = 0
+        self.conv1_act = 0
         ############################
-        
+
         if self.eval_mode:
             net.eval()    
         
@@ -65,6 +71,8 @@ class proxy_ResNet(nn.Module):
                 self.set_gradient_mode(which='lambda_and_beta')  
         
         elif not self.train_mode:
+            if self.regularization_mode == 'uniform_lambda':
+                self.set_gradient_mode(which='lambda')  
             if self.regularization_mode == 'BN_once':
                 self.set_running_stats()
                 self.num_iterations = 1
@@ -115,6 +123,7 @@ class proxy_ResNet(nn.Module):
     def set_gradient_mode(self, which='lambda'):
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
+        print(net_vars)
         if 'bn1' in net_vars: 
             self.net.bn1.weight.requires_grad = False
             if which == 'lambda_and_beta':
@@ -182,11 +191,24 @@ class proxy_ResNet(nn.Module):
         else:
             return activation
 
+    def prune(self, bn_layer, x, mode='lambda'):
+        lambdas = bn_layer.weight.detach().clone()
+        how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
+
+        if self.prune_mode == 'lambda':
+            ordered_idxs = torch.argsort(lambdas, descending=False)
+            x = x * (torch.where(lambdas > lambdas[ordered_idxs[how_many_to_zero]], 1., 0.).view(1, -1, 1, 1).expand(x.size()))
+        elif self.prune_mode == 'lambda_inverse':
+            ordered_idxs = torch.argsort(lambdas, descending=True)
+            x = x * (torch.where(lambdas < lambdas[ordered_idxs[how_many_to_zero]], 1., 0.).view(1, -1, 1, 1).expand(x.size()))
+        
+        return x
+
     def forward(self, x, ch_activation=[]):
         bn_count = 0
         # first conv layer 
         x = self.net.conv1(x)
-        self.conv1 = x.detach().clone()
+        self.conv1_act = x.detach().clone()
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
@@ -197,15 +219,20 @@ class proxy_ResNet(nn.Module):
             if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
             if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
             if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': self.net.bn1 = nn.Sequential()
+            
+            if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                x = self.prune(self.net.bn1, x)
+            if self.bounded_lambda:
+                self.net.bn1.weight.data = self.net.bn1.weight.data.clamp(-torch.sqrt(self.net.bn1.running_var), torch.sqrt(self.net.bn1.running_var))
+            self.bn1_act = self.net.bn1(x)
 
-            bn_count += 1   
-            self.bn1 = self.net.bn1(x)
+            bn_count += 1  
             #print(self.net.bn1.weight.requires_grad)
 
             if self.saliency_map:
-                self.bn1.retain_grad()
+                self.bn1_act.retain_grad()
             # first activation function layer 
-            x = self.net.activation_fn(self.bn1)
+            x = self.net.activation_fn(self.bn1_act)
         else:
             x = self.net.activation_fn(x)
         # four consecutive layers each containing blocks made up from sublocks
@@ -232,6 +259,10 @@ class proxy_ResNet(nn.Module):
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn1 = nn.Sequential()
                     bn_count += 1
+                    if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                        x = self.prune(block.bn1, x)
+                    if self.bounded_lambda:
+                        block.bn1.weight.data = block.bn1.weight.data.clamp(-torch.sqrt(block.bn1.running_var), torch.sqrt(block.bn1.running_var))
                     x = block.bn1(x)
                 x = block.activation_fn(x)
 
@@ -245,6 +276,10 @@ class proxy_ResNet(nn.Module):
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn2 = nn.Sequential()
                     bn_count += 1
+                    if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                        x = self.prune(block.bn2, x)
+                    if self.bounded_lambda:
+                        block.bn2.weight.data = block.bn2.weight.data.clamp(-torch.sqrt(block.bn2.running_var), torch.sqrt(block.bn2.running_var))
                     x = block.bn2(x)
                 x = block.activation_fn(x)
 
@@ -258,6 +293,10 @@ class proxy_ResNet(nn.Module):
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn3 = nn.Sequential()
                     bn_count += 1
+                    if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                        x = self.prune(block.bn3, x)
+                    if self.bounded_lambda:
+                        block.bn3.weight.data = block.bn3.weight.data.clamp(-torch.sqrt(block.bn3.running_var), torch.sqrt(block.bn3.running_var))
                     x = block.bn3(x)
 
                 shortcut = list(block.shortcut)
@@ -272,6 +311,10 @@ class proxy_ResNet(nn.Module):
                             if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                             if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': shortcut_layer = nn.Sequential()
                             bn_count += 1
+                            if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                                x = self.prune(shortcut_layer, x)
+                            if self.bounded_lambda:
+                                shortcut_layer.weight.data = shortcut_layer.weight.data.clamp(-torch.sqrt(shortcut_layer.running_var), torch.sqrt(shortcut_layer.running_var))
                         temp = shortcut_layer(temp)
                 x = x + temp
                 

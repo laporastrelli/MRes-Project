@@ -24,6 +24,7 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
             else:
                 print("Custom ResNet")
                 net = ResNet_v1.ResNet50(where_bn=where_bn, normalization=FLAGS.normalization, num_classes=n_classes)
+                    
         else:
             print('no BN')
             print(where_bn)
@@ -49,6 +50,16 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                             run_name=run_name, 
                                             train_mode=FLAGS.train,
                                             regularization_mode=FLAGS.regularization_mode)
+        if FLAGS.bounded_lambda:
+            print('Training/Testing with lambda-clipping ...')
+            net = proxy_ResNet.proxy_ResNet(net, 
+                                            eval_mode=FLAGS.use_pop_stats,
+                                            device=FLAGS.device,
+                                            noise_variance=FLAGS.noise_variance,
+                                            run_name=run_name, 
+                                            train_mode=FLAGS.train,
+                                            regularization_mode=FLAGS.regularization_mode, 
+                                            bounded_lambda=FLAGS.bounded_lambda)
     
     if model_name == 'ResNet18':
         print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')

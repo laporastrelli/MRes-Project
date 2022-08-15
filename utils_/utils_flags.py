@@ -24,7 +24,7 @@ flags.DEFINE_bool('load_pretrained', None, 'decide whether to load pre trained m
 flags.DEFINE_bool('test', None, 'decide whether to test or not')
 flags.DEFINE_bool('relative_accuracy', False, 'evaluate with respect to correct batch correct samples')
 flags.DEFINE_bool('test_noisy', False, 'inject noise at test time')
-flags.DEFINE_float('noise_variance', 0, 'value of injected noise variance')
+flags.DEFINE_float('noise_variance', 0., 'value of injected noise variance')
 flags.DEFINE_bool('noise_before_PGD', False, 'decide whether to use noise ')
 flags.DEFINE_bool('noise_after_BN', None, 'decide if to apply noise before or after BN layer')
 flags.DEFINE_bool('random_resizing', False, 'decide whether to apply random input resizing + cropping')
@@ -104,6 +104,14 @@ flags.DEFINE_bool('use_bn_scaling', False, 'test IB noise with BN scaling')
 flags.DEFINE_bool('adversarial_transferrability', False, 'adversarial transferrability mode')
 flags.DEFINE_string('model_name_to_attack', '', 'pretrained model name in adversarial_transferrability mode') 
 flags.DEFINE_string('pretrained_name_to_attack', '', 'pretrained model run name in adversarial_transferrability mode') 
+
+flags.DEFINE_string('prune_mode', '', 'prune mode')
+flags.DEFINE_float('prune_percentage', 1., 'percentage of the channels to prune in a layer')
+
+flags.DEFINE_bool('prune_mixed', False, 'prune model based on layer lambda value')
+flags.DEFINE_bool('prune_random', False, 'prune model based on layer lambda value')
+
+flags.DEFINE_bool('track_capacity', False, 'decide or not whether to track the progression of lambda during training')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

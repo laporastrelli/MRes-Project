@@ -41,7 +41,8 @@ def test(run_name,
          compare_frequency_domain=False, 
          square_attack=False, 
          HF_attenuate=False, 
-         adversarial_transferrability=False):
+         adversarial_transferrability=False, 
+         prune_model=False):
 
     FLAGS = flags.FLAGS
 
@@ -69,8 +70,10 @@ def test(run_name,
                                    scaled_lambda=FLAGS.scaled_lambda,
                                    noise_first_layer=FLAGS.noise_first_layer,
                                    noise_not_first_layer=FLAGS.noise_not_first_layer,
-                                   attenuate_HF=FLAGS.attenuate_HF,
+                                   prune_mode=FLAGS.prune_mode,
+                                   prune_percentage=FLAGS.prune_percentage,
                                    layer_to_test=FLAGS.layer_to_test,
+                                   attenuate_HF=FLAGS.attenuate_HF,
                                    capacity=FLAGS.capacity,
                                    get_logits=FLAGS.get_logits)
         outputs.append(test_acc)
@@ -226,6 +229,8 @@ def test(run_name,
                                                       epsilon=FLAGS.epsilon, 
                                                       num_iter=FLAGS.PGD_iterations,
                                                       radius=FLAGS.low_pass_radius,
+                                                      capacity_regularization=FLAGS.capacity_regularization,
+                                                      regularization_mode=FLAGS.regularization_mode,
                                                       eval_mode=FLAGS.use_pop_stats)
         outputs.append(low_f_rob)
 

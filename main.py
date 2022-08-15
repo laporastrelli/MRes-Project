@@ -32,6 +32,9 @@ def main(argv):
     print('device: ', FLAGS.device)
     print('BATCH SIZE: ', FLAGS.batch_size)
 
+    print('Pruning Mode: ', FLAGS.prune_mode)
+    print('Layer to Prune: ', FLAGS.layer_to_test)
+
     # set root paths depending on the server in use
     if str(os.getcwd()).find('bitbucket') != -1:
         FLAGS.root_path = '/vol/bitbucket/lr4617'
@@ -121,7 +124,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.frequency_analysis:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 1]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
             already_exists = True
     if FLAGS.IB_noise_calculation:
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
@@ -135,9 +138,8 @@ def main(argv):
     if FLAGS.adversarial_test and not FLAGS.train:
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True 
-        else:
-            if get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
-                already_exists = True 
+        elif get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
+            already_exists = True 
     if FLAGS.adversarial_test and 'Square' in FLAGS.attacks_in :
         if FLAGS.use_pop_stats:
             if get_bn_int_from_name(FLAGS.pretrained_name) not in [100, 0]:
@@ -159,6 +161,13 @@ def main(argv):
             print('The two models are the same')
         else:
             print('Good to go!')
+    if FLAGS.test_low_pass_robustness:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+            already_exists = True
+
+    if len(FLAGS.prune_mode) > 0 :
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+            already_exists = True
 
     # display model info
     if FLAGS.verbose:
@@ -269,6 +278,14 @@ def main(argv):
                             FLAGS.low_pass_radius = int(radius)
                             dict_name = attack + '-' + str(FLAGS.epsilon) + '-' + str(FLAGS.low_pass_radius)
                             adv_accs[dict_name] = test(index, test_low_pass_robustness=True)
+        
+        if len(FLAGS.prune_mode) > 0 :
+            adv_accs = dict()
+            prune_percentages = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+            for prune_percentage in prune_percentages:
+                FLAGS.prune_percentage = prune_percentage
+                dict_name = 'percentage - ' + str(prune_percentage)
+                adv_accs[dict_name] = test(index, standard=True)
 
         if FLAGS.compare_frequency_domain:
             _ = test(index, compare_frequency_domain=True) 
@@ -296,8 +313,8 @@ def main(argv):
 
             # update and save dict (if it already exists)
             else:
-                counter_dict = np.load('./results/adversarial_transferrability/' + counter_dict_name).item()
-                transfer_dict = np.load('./results/adversarial_transferrability/' + transfer_dict_name).item()
+                counter_dict = np.load('./results/adversarial_transferrability/' + counter_dict_name, allow_pickle='TRUE').item()
+                transfer_dict = np.load('./results/adversarial_transferrability/' + transfer_dict_name, allow_pickle='TRUE').item()
 
                 if key_name_attacker in list(transfer_dict.items()):
                     if key_name_attacked in list(transfer_dict[key_name_attacker].items()):
@@ -382,7 +399,9 @@ def main(argv):
                     # csv_dict[columns_csv[6]] = int(FLAGS.frequency_radius)
                     # csv_dict[columns_csv[7]] = test_acc
                     csv_dict.update(freq_dict) 
-                if not FLAGS.adversarial_test and not FLAGS.test_low_pass_robustness: 
+                elif len(FLAGS.prune_mode) > 0:
+                    pass
+                elif not FLAGS.adversarial_test and not FLAGS.test_low_pass_robustness: 
                     adv_accs = {}
 
                 csv_dict.update(adv_accs)    
