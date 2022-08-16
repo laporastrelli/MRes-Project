@@ -887,7 +887,7 @@ def adversarial_test(net,
                      transfer_mode='capacity_based'):
 
     #net.load_state_dict(torch.load(model_path))
-    net.load_state_dict(torch.load(model_path, map_location='cuda:1'))
+    net.load_state_dict(torch.load(model_path, map_location='cpu'))
     net.to(device)
 
     ################## MODE SELECTION ##################

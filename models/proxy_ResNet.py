@@ -123,7 +123,6 @@ class proxy_ResNet(nn.Module):
     def set_gradient_mode(self, which='lambda'):
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
-        print(net_vars)
         if 'bn1' in net_vars: 
             self.net.bn1.weight.requires_grad = False
             if which == 'lambda_and_beta':
@@ -344,7 +343,10 @@ class proxy_ResNet(nn.Module):
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
-            self.bn_parameters['BN_' + str(bn_count)] = self.net.bn1.weight.detach()
+            if self.regularization_mode == 'euclidean_total':
+                self.bn_parameters['BN_' + str(bn_count)] = self.net.bn1.weight
+            else:
+                self.bn_parameters['BN_' + str(bn_count)] = self.net.bn1.weight.detach()
             if get_variance:
                 self.running_variances['BN_' + str(bn_count)] = self.net.bn1.running_var.detach()
             bn_count += 1
@@ -365,7 +367,10 @@ class proxy_ResNet(nn.Module):
                 
                 # re-construct block
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn1.weight.detach()
+                    if self.regularization_mode == 'euclidean_total':
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn1.weight
+                    else:
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn1.weight.detach()
                     if get_variance:
                         self.running_variances['BN_' + str(bn_count)] = block.bn1.running_var.detach()
                     bn_count += 1
@@ -374,7 +379,10 @@ class proxy_ResNet(nn.Module):
                         bn_count_internal += 1
 
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn2.weight.detach()
+                    if self.regularization_mode == 'euclidean_total':
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn2.weight
+                    else:
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn2.weight.detach()
                     if get_variance:
                         self.running_variances['BN_' + str(bn_count)] = block.bn2.running_var.detach()
                     bn_count += 1
@@ -383,7 +391,10 @@ class proxy_ResNet(nn.Module):
                         bn_count_internal += 1
 
                 if bn_mode: 
-                    self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight.detach()
+                    if self.regularization_mode == 'euclidean_total':
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight
+                    else:
+                        self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight.detach()
                     if get_variance:
                         self.running_variances['BN_' + str(bn_count)] = block.bn3.running_var.detach()
                     bn_count += 1
@@ -395,7 +406,10 @@ class proxy_ResNet(nn.Module):
                 if len(shortcut) > 0:
                     for shortcut_layer in shortcut:
                         if isinstance(shortcut_layer, torch.nn.modules.batchnorm.BatchNorm2d):
-                            self.bn_parameters['BN_' + str(bn_count)] = shortcut_layer.weight.detach()
+                            if self.regularization_mode == 'euclidean_total':
+                                self.bn_parameters['BN_' + str(bn_count)] = shortcut_layer.weight
+                            else:
+                                self.bn_parameters['BN_' + str(bn_count)] = shortcut_layer.weight.detach()
                             if get_variance:
                                 self.running_variances['BN_' + str(bn_count)] = shortcut_layer.running_var.detach()
                             bn_count += 1
