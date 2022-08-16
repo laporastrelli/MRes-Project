@@ -198,7 +198,7 @@ def train (train_loader,
             grad_clip = False
             lr_ = 0.01
             if model_name.find('VGG16')!= -1 and (batch_norm and sum(FLAGS.where_bn)>1):
-                lr_ = 0.05
+                lr_ = 0.01
             if FLAGS.normalization == 'ln' or FLAGS.nonlinear_lambda or FLAGS.dropout_lambda:
                 lr_ = 0.001
             elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:

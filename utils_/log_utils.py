@@ -164,7 +164,6 @@ def get_csv_path(model_name):
             where_noise += '_scaled_total'
         elif FLAGS.scaled_lambda:
             where_noise += '_scaled_lambda'
-        
         if FLAGS.noise_first_layer:
             where_noise += '_first_layer'
         elif FLAGS.noise_not_first_layer:

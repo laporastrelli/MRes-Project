@@ -148,9 +148,9 @@ def main(argv):
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
-    if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
+    '''if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
         if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
-            already_exists = False 
+            already_exists = False '''
     if FLAGS.adversarial_transferrability:
         print('Model ATTACKING: ', FLAGS.pretrained_name)
         print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
