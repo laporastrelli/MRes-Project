@@ -127,6 +127,23 @@ def get_csv_path(model_name):
             if not os.path.isdir(csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/'):
                 os.mkdir(csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/')
             csv_path_dir = csv_path_dir + 'bs_' + str(FLAGS.batch_size) + '/'
+    
+    if len(FLAGS.prune_mode) > 0:
+        if not os.path.isdir(csv_path_dir + 'pruning/'):
+            os.mkdir(csv_path_dir + 'pruning/')
+        csv_path_dir = csv_path_dir + 'pruning/'
+
+        if not os.path.isdir(csv_path_dir + FLAGS.pretrained_name + '/'):
+            os.mkdir(csv_path_dir + FLAGS.pretrained_name + '/')
+        csv_path_dir = csv_path_dir + FLAGS.pretrained_name + '/'
+
+        if not os.path.isdir(csv_path_dir + FLAGS.prune_mode + '/'):
+            os.mkdir(csv_path_dir + FLAGS.prune_mode + '/')
+        csv_path_dir = csv_path_dir + FLAGS.prune_mode + '/'
+
+        if not os.path.isdir(csv_path_dir + 'Layer_' + str(FLAGS.layer_to_test) + '/'):
+            os.mkdir(csv_path_dir + 'Layer_' + str(FLAGS.layer_to_test) + '/')
+        csv_path_dir = csv_path_dir + 'Layer_' + str(FLAGS.layer_to_test) + '/'
 
     ##################### DEFINE FILE NAME #####################
     if FLAGS.relative_accuracy:
@@ -140,9 +157,11 @@ def get_csv_path(model_name):
     if len(os.listdir(csv_path_dir)) == 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '.csv'
+    
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
+
     if FLAGS.test_frequency:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_' \

@@ -46,7 +46,11 @@ def model_setup(net,
                 device,
                 use_pop_stats, 
                 run_name, 
-                noise_variance):
+                noise_variance, 
+                regularization_mode='', 
+                prune_mode='', 
+                prune_percentage=1.0, 
+                layer_to_test=0):
 
     net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
@@ -57,13 +61,21 @@ def model_setup(net,
                         eval_mode=use_pop_stats,
                         device=device,
                         run_name=run_name,
-                        noise_variance=noise_variance)
+                        noise_variance=noise_variance, 
+                        regularization_mode=regularization_mode, 
+                        prune_mode=prune_mode, 
+                        prune_percentage=prune_percentage, 
+                        layer_to_test=layer_to_test)
     elif run_name.find('ResNet') != -1: 
         net = proxy_ResNet(net, 
                             eval_mode=use_pop_stats,
                             device=device,
                             run_name=run_name,
-                            noise_variance=noise_variance)
+                            noise_variance=noise_variance, 
+                            regularization_mode=regularization_mode, 
+                            prune_mode=prune_mode, 
+                            prune_percentage=prune_percentage, 
+                            layer_to_test=layer_to_test)
     #####################################################
 
     ################## EVAL MODE ##################
@@ -90,14 +102,17 @@ def test(net,
         scaled_lambda=False,
         noise_first_layer=False,
         noise_not_first_layer=False,
-        attenuate_HF=False,
+        prune_mode='',
+        prune_percentage=1.0,
         layer_to_test=0,
+        attenuate_HF=False,
         capacity=0,
         get_logits=False):
 
-    # net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
-    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
-    net.to(device)
+    if prune_mode == '':
+        # net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+        net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+        net.to(device)
 
     if inject_noise:
         if run_name.find('VGG') != -1:
@@ -139,6 +154,17 @@ def test(net,
                              noise_variance=0, 
                              attenuate_HF=attenuate_HF,
                              layer_to_test=int(layer_to_test))
+    
+    if len(prune_mode) > 0:
+        net = model_setup(net, 
+                          model_path, 
+                          device,
+                          eval_mode, 
+                          run_name, 
+                          noise_variance, 
+                          prune_mode=prune_mode, 
+                          prune_percentage=prune_percentage, 
+                          layer_to_test=layer_to_test)
 
     if eval_mode:
         net.eval()
@@ -259,9 +285,7 @@ def test(net,
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_correct_' + str(i) + '.npy', np.asarray(logits_diff_correct))
             np.save('./results/VGG19/VGG_no_eval/logits_analysis/' + run_name + '/logits_diff_incorrect_' + str(i) + '.npy', np.asarray(logits_diff_incorrect))
         if not inject_noise:
-            timestamp1 = time.time()
             outputs = net(X)
-            timestamp2 = time.time()
             #print('time elapsed for single forward pass: ', timestamp2 - timestamp1)
 
         _, predicted = torch.max(outputs.data, 1)
@@ -422,7 +446,7 @@ def calculate_capacity(net,
                 path_out += regularization_mode + '/'
                 if not os.path.isdir(path_out): 
                     os.mkdir(path_out)
-                path_out += str(beta).replace('.','') + '/'
+                path_out += str(beta).replace('.', '') + '/'
                 if not os.path.isdir(path_out): 
                     os.mkdir(path_out)
             path_out += 'lambdas.npy'
@@ -509,6 +533,7 @@ def calculate_capacity(net,
                             np.save(path_to_save_file + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
         
         if index_order_analysis:
+            use_lambda
             path_to_save = ''
             if run_name.find('VGG') != -1:
                 layers_to_save = [0,1,2,5,8,10,12,15]
@@ -518,10 +543,22 @@ def calculate_capacity(net,
 
             capacity_diff = dict.fromkeys(keys_to_save, [])
 
+<<<<<<< HEAD
             path_to_save = path_out + 'all_layers/clean_test/index_order_analysis' + '/' 
             if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
             path_to_save +=  run_name + '/'
             if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+=======
+            path_out += 'all_layers/clean_test/index_order_analysis' + '/' 
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            
+            if use_lambda:
+                path_out += 'use_lambda' + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            path_out +=  run_name + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+>>>>>>> 0e735f1b6d957a3339f382ca15b7cb56d1e4c4c4
 
             for i, data in enumerate(test_loader, 0):
                 if i < batch:
@@ -543,6 +580,8 @@ def calculate_capacity(net,
 
                     for chn, key_ in enumerate(layer_key):
                         sorted_idxs = torch.argsort(capacities[key_][0])
+                        if use_lambda:
+                            sorted_idxs = torch.argsort(net.get_bn_parameters()[key_])
                         final_capacity = capacities[key_][-1]
                         temp = final_capacity[sorted_idxs].numpy()
 
@@ -877,7 +916,7 @@ def adversarial_test(net,
                             scaled_lambda=scaled_lambda, 
                             noise_first_layer=noise_first_layer,
                             noise_not_first_layer=noise_not_first_layer)
-                            
+
         if run_name.find('ResNet')!= -1:
             net = noisy_ResNet(net,
                             eval_mode=use_pop_stats,
@@ -1799,7 +1838,7 @@ def get_frequency_images(model,
                          frequency_radius=[i for i in range(2,16)], 
                          visualization=False, 
                          mse_comparison=True, 
-                         use_conv=True):
+                         use_conv=False):
     '''
     input(s):
         - model
@@ -1819,11 +1858,12 @@ def get_frequency_images(model,
 
     # model for activations
     if run_name.find('VGG')!= -1:
-        model = proxy_VGG2(model, 
+        model = proxy_VGG3(model, 
                            eval_mode=eval_mode,
                            device=device,
                            run_name=run_name,
-                           noise_variance=0)
+                           noise_variance=0, 
+                           layer_to_test=layer_to_test)
     elif run_name.find('ResNet') != -1: 
         model = proxy_ResNet(model, 
                            eval_mode=eval_mode,
@@ -1843,12 +1883,14 @@ def get_frequency_images(model,
     X, y = X.to(device), y.to(device) 
 
     if mse_comparison:
-        low_f_comparison = np.zeros((8, 14))
-        high_f_comparison = np.zeros((8, 14))
+        lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+        num_channels = lambdas.size(0)
+        low_f_comparison = np.zeros((num_channels, 14))
+        high_f_comparison = np.zeros((num_channels, 14))
     
     for r, radius in enumerate(frequency_radius):
 
-        print(r)
+        print('Radius: ', r)
     
         # get high and low frequency images for the given batch
         low_f_img, high_f_img = generateDataWithDifferentFrequencies_3Channel(X.cpu().numpy(), radius)
@@ -1863,43 +1905,71 @@ def get_frequency_images(model,
             ch_max = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=True)[0]
             ch_min = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)[0]
         else: 
-            ch_max = torch.argsort(model.bn.weight.cpu().detach(), descending=True)[0]
-            ch_min = torch.argsort(model.bn.weight.cpu().detach(), descending=False)[0]
+            lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+            ch_max = torch.argsort(lambdas, descending=True)[0]
+            ch_min = torch.argsort(lambdas, descending=False)[0]
         chs = [ch_max, ch_min]
 
         if mse_comparison:
+            print('MSE COMPARISON')
 
             # feed standard sample and get corresponding activations
             _ = model(X)
             if use_conv:
-                activations = model.conv1.cpu().detach()
+                activations = model.conv_frequency_activation
             else:
-                activations = model.bn1.cpu().detach()
+                activations = model.bn_frequency_activation
 
             # feed low-frequency sample and get corresponding activations 
             _ = model(low_f_img)
             if use_conv:
-                activations_low = model.conv1.cpu().detach()
+                activations_low = model.conv_frequency_activation
             else:
-                activations_low = model.bn1.cpu().detach()
+                activations_low = model.bn_frequency_activation
 
             # feed high-frequency sample and get corresponding activations 
             _ = model(high_f_img)
             if use_conv:
-                activations_high = model.conv1.cpu().detach()
+                activations_high = model.conv_frequency_activation
             else:
-                activations_high = model.bn1.cpu().detach()
+                activations_high = model.bn_frequency_activation
 
-            if run_name.find('ResNet') != -1: ordered_channels = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)
-            else: ordered_channels = torch.argsort(model.bn.weight.cpu().detach(), descending=False)
+            if run_name.find('ResNet') != -1: 
+                ordered_channels = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)
+            else: 
+                lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+                ordered_channels = torch.argsort(lambdas, descending=False)
 
             chns = [0, 7, 15, 25, 35, 45, 55, 63]
 
+            path_out = './results/' + get_model_name(run_name) + '/'
+
+            if eval_mode: path_out += 'eval/'
+            else: path_out += 'no_eval/' 
+            
+            path_out += 'PGD' + '/' + 'frequency_analysis/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            path_out += 'channel_frequency/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            path_out += run_name + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            if use_conv: path_out += 'use_conv' + '/'
+            else: path_out += 'use_bn' + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
+            path_out += 'layer_' + str(layer_to_test) + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+
             for bb, ch_ in enumerate(ordered_channels):
-                if bb in chns:
-                    print(mse_error(activations_low[:, ch_, :, :], activations[:, ch_, :, :]), mse_error(activations_high[:, ch_, :, :], activations[:, ch_, :, :]))
-                    low_f_comparison[chns.index(bb), r] = mse_error(activations_low[:, ch_, :, :], activations[:, ch_, :, :])
-                    high_f_comparison[chns.index(bb), r] = mse_error(activations_high[:, ch_, :, :], activations[:, ch_, :, :])
+                #print(mse_error(activations_low[:, ch_, :, :], activations[:, ch_, :, :]), mse_error(activations_high[:, ch_, :, :], activations[:, ch_, :, :]))
+                low_f_comparison[bb, r] = mse_error(activations_low[:, ch_, :, :], activations[:, ch_, :, :])
+                high_f_comparison[bb, r] = mse_error(activations_high[:, ch_, :, :], activations[:, ch_, :, :])
+
+        np.save(path_out + 'low_f_comparison' + '.npy', low_f_comparison)
+        np.save(path_out + 'high_f_comparison' + '.npy', high_f_comparison)
 
         if visualization:
             # iterate through the given batch
@@ -2047,6 +2117,9 @@ def get_frequency_images(model,
         else: root_path += 'use_bn' + '/'
         if not os.path.isdir(root_path): os.mkdir(root_path)
 
+        root_path += 'layer_' + str(layer_to_test) + '/'
+        if not os.path.isdir(root_path): os.mkdir(root_path)
+
         max_low = torch.max(torch.tensor(low_f_comparison))
         max_high = torch.max(torch.tensor(high_f_comparison))
         max_overall = torch.max(torch.tensor([max_low, max_high])).numpy()
@@ -2054,12 +2127,12 @@ def get_frequency_images(model,
         fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20,10))
         axs = axs.ravel()
         chns = [0, 7, 15, 25, 35, 45, 55, 63]
-        for cnt in range(low_f_comparison.shape[0]):
-            axs[cnt].plot(np.transpose(np.arange(2,16,1)), low_f_comparison[cnt, :], label='Low-Frequency')
-            axs[cnt].plot(np.transpose(np.arange(2,16,1)), high_f_comparison[cnt, :], label='High-Frequency')
+        for cnt in range(len(chns)):
+            axs[cnt].plot(np.transpose(np.arange(2,16,1)), low_f_comparison[chns[cnt], :], label='Low-Frequency')
+            axs[cnt].plot(np.transpose(np.arange(2,16,1)), high_f_comparison[chns[cnt], :], label='High-Frequency')
             axs[cnt].set_xlabel('Frequency Radius')
             axs[cnt].set_ylabel('MSE Error')
-            axs[cnt].set_ylim([0, max_overall +     0.05])
+            axs[cnt].set_ylim([0, max_overall + 0.05])
             axs[cnt].set_title('Ordered Channel #' + str(chns[cnt]))
             axs[cnt].legend()
             plt.close()
@@ -2774,6 +2847,8 @@ def test_low_pass_robustness(model,
                              epsilon,
                              num_iter,
                              radius,
+                             capacity_regularization=False,
+                             regularization_mode='',
                              eval_mode=True):
 
     print('Epsilon: ', epsilon)
@@ -2781,8 +2856,17 @@ def test_low_pass_robustness(model,
 
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
-    model.to(device)     
-    
+    model.to(device) 
+
+    if capacity_regularization:
+        model = model_setup(model, 
+                            model_path, 
+                            device,
+                            eval_mode, 
+                            run_name, 
+                            noise_variance=0, 
+                            regularization_mode=regularization_mode)
+
     # set eval mode
     if eval_mode: model.eval()
     if run_name.find('VGG')!= -1: model.classifier.eval()

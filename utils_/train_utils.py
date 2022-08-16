@@ -5,6 +5,9 @@ import torch
 import csv
 import math
 import wandb
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 from absl import flags
 from absl.flags import FLAGS
@@ -14,7 +17,8 @@ from utils_.miscellaneous import get_bn_layer_idx, entropy
 from torch import linalg as LA
 
 
-def train (train_loader, 
+
+def train(train_loader, 
            val_loader, 
            model, 
            device, 
@@ -286,12 +290,21 @@ def train (train_loader,
         run.config.update(config)
 
     ################ Training ################
+    layers = [0,1,2,5,8,10,12,15]
+    if model_name.find('ResNet')!= -1:
+        layers = [0,1,2,10,20,30,39,49]
+    layers_keys = ['BN_' + str(i) for i in layers]
+    capacities_clipped = dict.fromkeys(layers_keys, [])
+    capacities = dict.fromkeys(layers_keys, [])
+    steps = [0, 260]
+
     for epoch_num in range(n_epochs):
         model.train()
         total_loss, total_err = 0.,0.
         total_regularizer = 0
         total = 0
         regularizer = 0.0
+
         for i, data in enumerate(train_loader, 0):
 
             loss = 0
@@ -305,7 +318,112 @@ def train (train_loader,
                     model.set_iteration_num(iterations=i, epoch=epoch_num)
                     regularizer = 0
 
+            if FLAGS.track_capacity and FLAGS.bounded_lambda and i in steps:
+                fig, axs = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+                axs = axs.ravel()
+                
+                # get lambdas for each layer that we want to monitor:
+                layers = [0,1,2,5,8,10,12,15]
+                if model_name.find('ResNet')!= -1 :
+                    layers = [0,1,2,10,20,30,39,49]
+                titles = ['Layer - ' + str(k) for k in layers]
+                for b, key in enumerate(layers_keys):
+                    if epoch_num == 0 and i == steps[0]:
+                        if model_name.find('ResNet')!= -1 :
+                            capacities[key] = model.get_bn_parameters()[key].cpu()
+                        else:
+                            capacities[key] = model.get_bn_parameters()[key]
+                    else:
+                        to_add = []
+                        if epoch_num == 0 and i == steps[1]:
+                            exists = [capacities[key]]
+                        else:
+                            exists = capacities[key]
+                        for c in range(len(exists) + 1):
+                            if c < len(exists):
+                                to_add.append(exists[c])
+                            else:
+                                if model_name.find('ResNet')!= -1 :
+                                    to_add.append(model.get_bn_parameters()[key].cpu())
+                                else:
+                                    to_add.append(model.get_bn_parameters()[key])
+
+                        capacities[key] = to_add
+    
+                        
+                    if epoch_num == 0 and i == steps[0]:
+                        to_plot = [capacities[key]]
+                    else:
+                        to_plot = capacities[key]
+                    pos = np.arange(len(to_plot))
+                    axs[b].violinplot(to_plot, pos, points=60, widths=0.6, showmeans=True,
+                        showextrema=True, showmedians=True, bw_method=0.5)
+                    axs[b].set_title(titles[b], fontsize=11)
+                    #axs[b].set_xticks([d for d in range(len(capacities[key]))])
+                    #axs[b].set_xticklabels([120*f for f in range(len(capacities[key]))], fontsize=11)
+                if model_name.find('VGG')!=-1:
+                    plt.suptitle(r'$\lambda$' + ' Training Distibution VGG19', fontsize=16)
+                else:
+                    plt.suptitle(r'$\lambda$' + ' Training Distibution ResNet50', fontsize=16)
+                fig.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.98])
+                fig.text(0.48, 0.03, 'Training Step', va='center', fontsize=14)
+                fig.text(0.02, 0.5, r'$\lambda$' + ' Distribution', va='center', rotation='vertical', fontsize=14)
+                path_out = FLAGS.csv_path.replace('.csv', '_' + run_name + '_' + 'lambda_dist' + '.jpg')
+                fig.savefig(path_out)
+                plt.close()
+
             yp = model(X)
+
+            if FLAGS.track_capacity and FLAGS.bounded_lambda and i in steps:
+                fig_c, axs_c = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+                axs_c = axs_c.ravel()
+
+                # get lambdas for each layer that we want to monitor:
+                layers = [0,1,2,5,8,10,12,15]
+                if model_name.find('ResNet')!= -1 :
+                    layers = [0,1,2,10,20,30,39,49]
+                titles = ['Layer - ' + str(k) for k in layers]
+                for v, key in enumerate(layers_keys):
+                    if epoch_num == 0 and i == steps[0]:
+                        if model_name.find('ResNet')!= -1 :
+                            capacities_clipped[key] = model.get_bn_parameters()[key].cpu()
+                        else:
+                            capacities_clipped[key] = model.get_bn_parameters()[key]
+                    else:
+                        to_add = []
+                        if epoch_num == 0 and i == steps[1]:
+                            exists = [capacities_clipped[key]]
+                        else:
+                            exists = capacities_clipped[key]
+                        for c in range(len(exists) + 1):
+                            if c < len(exists):
+                                to_add.append(exists[c])
+                            else:
+                                if model_name.find('ResNet')!= -1 :
+                                    to_add.append(model.get_bn_parameters()[key].cpu())
+                                else:
+                                    to_add.append(model.get_bn_parameters()[key])
+
+                        capacities_clipped[key] = to_add
+
+                    if epoch_num == 0 and i == steps[0]:
+                        to_plot = [capacities_clipped[key]]
+                    else:
+                        to_plot = capacities_clipped[key]
+                    pos = np.arange(len(to_plot))
+                    axs_c[v].violinplot(to_plot, pos, points=60, widths=0.6, showmeans=True,
+                        showextrema=True, showmedians=True, bw_method=0.5)
+                    axs_c[v].set_title(titles[v], fontsize=11)
+                if model_name.find('VGG')!=-1:
+                    plt.suptitle(r'$\lambda$' + ' Training Distibution VGG19 (clipped ' + r'$\lambda$' + ')', fontsize=16)
+                else:
+                    plt.suptitle(r'$\lambda$' + ' Training Distibution ResNet50 (clipped ' + r'$\lambda$' + ')', fontsize=16)
+                fig_c.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.98])
+                fig_c.text(0.48, 0.03, 'Training Step', va='center', fontsize=14)
+                fig_c.text(0.02, 0.5, r'$\lambda$' + ' Distribution', va='center', rotation='vertical', fontsize=14)
+                path_out = FLAGS.csv_path.replace('.csv', '_' + run_name + '_' + 'clipped_lambda_dist' + '.jpg')
+                fig_c.savefig(path_out)
+                plt.close()
 
             if FLAGS.track_rank:
                 if i == 0:
@@ -390,23 +508,37 @@ def train (train_loader,
                     temp_ = FLAGS.beta*(regularizer)
                     loss += temp_
                 elif FLAGS.regularization_mode == 'euclidean_total':
-                    # regularizer = torch.tensor(0., device=device, requires_grad=True)
-                    regularizer = None
-                    bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
-                    if run_name.find('bn')!= -1:
-                        layer_key = ['BN_' + str(i) for i in range(16)]
-                    else:
-                        layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
-                    for _, idx in enumerate(bn_idx):
-                        if model_name.find('VGG')!= -1:
-                            weights = model.features[idx].weight
-                        if i == 0 and epoch_num == 0:
-                            regularizer = LA.norm(weights, 2)*0
+                    if model_name.find('VGG')!= -1:
+                        # regularizer = torch.tensor(0., device=device, requires_grad=True)
+                        regularizer = None
+                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                        if run_name.find('bn')!= -1:
+                            layer_key = ['BN_' + str(i) for i in range(16)]
                         else:
-                            if regularizer == None:
-                                regularizer = LA.norm(weights, 2)
+                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                        for _, idx in enumerate(bn_idx):
+                            if model_name.find('VGG')!= -1:
+                                weights = model.features[idx].weight
+                            if i == 0 and epoch_num == 0:
+                                regularizer = LA.norm(weights, 2)*0
                             else:
-                                regularizer = regularizer + LA.norm(weights, 2)
+                                if regularizer == None:
+                                    regularizer = LA.norm(weights, 2)
+                                else:
+                                    regularizer = regularizer + LA.norm(weights, 2)
+                    else:
+                        regularizer = None
+                        lambdas = model.get_bn_parameters()
+                        for key_ in list(lambdas.keys()):
+                            weights = lambdas[key_]
+                            if i == 0 and epoch_num == 0:
+                                regularizer = LA.norm(weights, 2)*0
+                            else:
+                                if regularizer == None:
+                                    regularizer = LA.norm(weights, 2)
+                                else:
+                                    regularizer = regularizer + LA.norm(weights, 2)
+
                     regularizer = FLAGS.beta*(regularizer)
                     loss += regularizer
                 elif FLAGS.regularization_mode == 'euclidean_first_layer':
@@ -429,7 +561,6 @@ def train (train_loader,
                                 regularizer = regularizer + LA.norm(weights, 2)
                     regularizer = FLAGS.beta*(regularizer)
                     loss += regularizer
-
                 elif FLAGS.regularization_mode == 'uniform_lambda':
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
@@ -553,21 +684,35 @@ def train (train_loader,
                         temp = FLAGS.beta*(regularizer)
                         loss += temp
                     elif FLAGS.regularization_mode == 'euclidean_total':
-                        regularizer_val = None
-                        bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
-                        if run_name.find('bn')!= -1:
-                            layer_key = ['BN_' + str(i) for i in range(16)]
-                        else:
-                            layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
-                        for _, idx in enumerate(bn_idx):
-                            weights = model.features[idx].weight
-                            if i == 0 and epoch_num == 0:
-                                regularizer_val = LA.norm(weights, 2)*0
+                        if model_name.find('VGG')!= -1:
+                            regularizer_val = None
+                            bn_idx = get_bn_layer_idx(model, run_name.split('_')[0])
+                            if run_name.find('bn')!= -1:
+                                layer_key = ['BN_' + str(i) for i in range(16)]
                             else:
-                                if regularizer_val == None:
-                                    regularizer_val = LA.norm(weights, 2)
+                                layer_key = ['BN_' +  str(i) for i in range(len(bn_idx))]
+                            for _, idx in enumerate(bn_idx):
+                                weights = model.features[idx].weight
+                                if i == 0 and epoch_num == 0:
+                                    regularizer_val = LA.norm(weights, 2)*0
                                 else:
-                                    regularizer_val = regularizer_val + LA.norm(weights, 2)
+                                    if regularizer_val == None:
+                                        regularizer_val = LA.norm(weights, 2)
+                                    else:
+                                        regularizer_val = regularizer_val + LA.norm(weights, 2)
+                        else:
+                            regularizer_val = None
+                            lambdas = model.get_bn_parameters()
+                            for key_ in list(lambdas.keys()):
+                                weights = lambdas[key_]
+                                if i == 0 and epoch_num == 0:
+                                    regularizer_val = LA.norm(weights, 2)*0
+                                else:
+                                    if regularizer_val == None:
+                                        regularizer_val = LA.norm(weights, 2)
+                                    else:
+                                        regularizer_val = regularizer_val + LA.norm(weights, 2)
+                        
                         regularizer_val = FLAGS.beta*(regularizer_val)
                         loss += regularizer_val
                     elif FLAGS.regularization_mode == 'euclidean_first_layer':

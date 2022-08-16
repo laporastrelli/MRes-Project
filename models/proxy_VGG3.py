@@ -55,7 +55,7 @@ class proxy_VGG3(nn.Module):
                  bounded_lambda=False, 
                  dropout_bn=False,
                  nonlinear_lambda=False,
-                 free_lambda=True,
+                 free_lambda=False,
                  train_mode=False):
 
         super(proxy_VGG3, self).__init__()
@@ -106,6 +106,11 @@ class proxy_VGG3(nn.Module):
 
         ############################
         self.last_layer = 0
+        ############################
+
+        ############################
+        self.bn_frequency_activation = 0
+        self.conv_frequency_activation = 0 
         ############################
 
         ############################
@@ -310,7 +315,12 @@ class proxy_VGG3(nn.Module):
                         x = model(x)
 
                     else:
+                        if bn_count == self.layer_to_test:
+                            self.conv_frequency_activation = x.detach().cpu()
                         x = model(x)
+                        if bn_count == self.layer_to_test:
+                            self.bn_frequency_activation = x.detach().cpu()
+                        
                     
                     bn_count += 1
                                 

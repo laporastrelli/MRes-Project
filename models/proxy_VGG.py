@@ -22,7 +22,10 @@ class proxy_VGG(nn.Module):
                  verbose=False, 
                  run_name='',
                  train_mode=False, 
-                 regularization_mode=''):
+                 regularization_mode='', 
+                 prune_mode='', 
+                 prune_percentage=1., 
+                 layer_to_test=0):
 
         super(proxy_VGG, self).__init__()
 
@@ -38,6 +41,9 @@ class proxy_VGG(nn.Module):
         self.gradients = 0
         self.train_mode = train_mode
         self.regularization_mode = regularization_mode
+        self.prune_mode = prune_mode
+        self.prune_percentage = prune_percentage
+        self.layer_to_prune = layer_to_test
         self.num_iterations = 0
 
         features = list(net.features)
@@ -89,7 +95,6 @@ class proxy_VGG(nn.Module):
                 model.running_mean = 0 * model.running_mean
                 model.running_var = 1 * model.running_var
                 bn_count += 1
-        return self.bn_parameters
     
     def set_running_stats(self, layer, mode='zero'):
         if mode == 'zero':
@@ -131,12 +136,11 @@ class proxy_VGG(nn.Module):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
 
                 if self.verbose and self.get_bn_int_from_name() in [100, 1]:
+                    #self.activations['BN_' + str(bn_count)] = x
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
                     self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
-                    #self.activations['BN_' + str(bn_count)] = x 
-                    self.bn_parameters['BN_' + str(bn_count)] = model.weight
                     self.test_variance['BN_' + str(bn_count)] = var_test
-                
+                    
                 if len(ch_activation)> 0 and self.get_bn_int_from_name() in [100, 1]:
                     ch, bn_idx, activation = ch_activation
                     if bn_count == bn_idx: 
@@ -160,9 +164,34 @@ class proxy_VGG(nn.Module):
                 if self.regularization_mode == 'BN_once' and self.num_iterations > 0:
                     model = self.set_running_stats(model, mode='zero')
 
+                if len(self.prune_mode)>0 and bn_count == self.layer_to_prune:
+                    if self.prune_mode == 'lambda':
+                        lambdas = model.weight.detach().clone()
+                        how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
+                        ordered_idxs = torch.argsort(lambdas, descending=False)
+
+                        model.weight.data = model.weight.data * torch.where(lambdas > lambdas[ordered_idxs[how_many_to_zero]], 1., 0.)
+
+                        x = model(x)
+
+                        model.weight.data = lambdas
+
+                    elif self.prune_mode == 'lambda_inverse':
+                        lambdas = model.weight.detach().clone()
+                        how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
+                        ordered_idxs = torch.argsort(lambdas, descending=True)
+
+                        model.weight.data = model.weight.data * torch.where(lambdas < lambdas[ordered_idxs[how_many_to_zero]], 1., 0.)
+
+                        x = model(x)
+
+                        model.weight.data = lambdas
+                
+                else:
+                    x = model(x)
+
                 bn_count += 1
 
-                x = model(x)
             else:
                 x = model(x)
 
