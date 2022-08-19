@@ -397,16 +397,10 @@ def calculate_capacity(net,
                        regularization_mode='euclidean',
                        save_analysis=True, 
                        get_BN_names=False, 
-<<<<<<< HEAD
-                       net_analysis=True, 
-                       distribution_analysis=True, 
-                       index_order_analysis=True):
-=======
                        net_analysis=False, 
                        distribution_analysis=False, 
                        index_order_analysis=True,
                        get_bias=True):
->>>>>>> 8ac4268e3fd9160e8c2a61fefa5bdb6f7c5127d7
     
     print('Calculating Capacity')
 
