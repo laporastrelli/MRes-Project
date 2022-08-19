@@ -533,7 +533,7 @@ def calculate_capacity(net,
                             np.save(path_to_save_file + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
         
         if index_order_analysis:
-            use_lambda
+            use_lambda = False
             path_to_save = ''
             if run_name.find('VGG') != -1:
                 layers_to_save = [0,1,2,5,8,10,12,15]
@@ -543,12 +543,6 @@ def calculate_capacity(net,
 
             capacity_diff = dict.fromkeys(keys_to_save, [])
 
-<<<<<<< HEAD
-            path_to_save = path_out + 'all_layers/clean_test/index_order_analysis' + '/' 
-            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
-            path_to_save +=  run_name + '/'
-            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
-=======
             path_out += 'all_layers/clean_test/index_order_analysis' + '/' 
             if not os.path.isdir(path_out): os.mkdir(path_out)
             
@@ -558,7 +552,6 @@ def calculate_capacity(net,
 
             path_out +=  run_name + '/'
             if not os.path.isdir(path_out): os.mkdir(path_out)
->>>>>>> 0e735f1b6d957a3339f382ca15b7cb56d1e4c4c4
 
             for i, data in enumerate(test_loader, 0):
                 if i < batch:

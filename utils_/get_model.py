@@ -61,6 +61,19 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                             regularization_mode=FLAGS.regularization_mode, 
                                             bounded_lambda=FLAGS.bounded_lambda)
     
+    if model_name == 'ResNet34':
+        if sum(where_bn)>1:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet34(where_bn=where_bn)
+            else:
+                
+                net = ResNet_v1.ResNet34(where_bn=where_bn, normalization=FLAGS.normalization)
+        else:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet34(where_bn=where_bn)
+            else:
+                net = ResNet_v1.ResNet34(where_bn=where_bn, normalization=FLAGS.normalization)
+
     if model_name == 'ResNet18':
         print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
         if sum(where_bn)>1:
