@@ -1,4 +1,5 @@
 ############ IMPORTS ############
+from importlib.resources import path
 from itertools import count
 from statistics import mean
 from tkinter import Y
@@ -30,6 +31,8 @@ from utils_.adversarial_attack import pgd_linf, pgd_linf_loss_analysis, pgd_linf
 from utils_.miscellaneous import get_bn_config, get_minmax, get_model_name, get_model_path, set_eval_mode
 from torch import linalg as LA
 from models.noisy_VGG import noisy_VGG
+from models.proxy_VGG import proxy_VGG
+
 
 def get_FAB_acc(run_name, attack, verbose=True):
 
@@ -55,7 +58,14 @@ def get_FAB_acc(run_name, attack, verbose=True):
     net.to(device)
     set_eval_mode(net, FLAGS.use_pop_stats)
 
-    if FLAGS.test_noisy and FLAGS.noise_before_PGD:
+    if FLAGS.attack == 'Square':
+        print('Using Proxy Model ...')
+        net = proxy_VGG(net, 
+                        eval_mode=FLAGS.use_pop_stats,
+                        device=device,
+                        run_name=run_name)
+
+    elif FLAGS.test_noisy and FLAGS.noise_before_PGD:
         print('Adversarial Test With Noise ...')
         net = noisy_VGG(net, 
                         eval_mode=FLAGS.use_pop_stats,
@@ -154,6 +164,11 @@ def get_FAB_acc(run_name, attack, verbose=True):
         else:
             X_positive, Y_positive = X.to(device), y.to(device)
         
+        ####################################################################
+        if j == 5 and FLAGS.attack == 'Square':
+            break
+        ####################################################################
+        
         # initialize attack
         if attack == 'FAB':
             version = 'custom'
@@ -248,7 +263,60 @@ def get_FAB_acc(run_name, attack, verbose=True):
         # employ attack
         if attack != 'PGD':
             advimg = adversary.run_standard_evaluation(X_positive, Y_positive.type(torch.LongTensor).to(device), bs=FLAGS.batch_size)
-            
+            if FLAGS.attack == 'Square':
+                layers = [0,1,2,5,8,10,12,15]
+                layers_keys = ['BN_' + str(t) for t in layers]
+                legend_labels = ['Training Variance', 'Test Variance']
+
+                fig_var, axs_var = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+                axs_var = axs_var.ravel()
+                for h, layer_key in enumerate(layers_keys):
+                    test_var = net.test_variance[layer_key]
+                    running_var = net.get_running_variance()[layer_key]
+                    dict_to_plot = {'Training Variance': running_var, 'Test Variance': test_var}
+                    axs_var[h].sns.displot(data=dict_to_plot, kind="kde", legend=False)
+
+                plt.suptitle('Comparison of Training and Test (Adversarial) Channel Variance')
+                fig_var.text(0.45, 0.03, 'Channel Variance', va='center', fontsize=14)
+                fig_var.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+                legend = fig_var.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+                frame = legend.get_frame()
+                frame.set_color('white')
+                frame.set_edgecolor('red')
+                fig_var.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+                root_to_save = './results/'
+                path_out = root_to_save + run_name.split('_')[0] + '/' 
+                path_out += 'no_eval' + '/' 
+                path_out += str(FLAGS.attack) + '/'
+                path_out += 'statistics_comaprison' + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                path_out += run_name +'/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                path_out += 'batch_' + str(j) + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                path_out += 'epsilon_' + str(FLAGS.epsilon).replace('.', '') + '/'
+                if not os.path.isdir(path_out): os.mkdir(path_out)
+                fig_var.savefig(path_out + 'variance_comaprison.jpg')
+
+                fig_mean, axs_mean = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+                axs_mean = axs_mean.ravel()
+                legend_labels = ['Training Mean', 'Test Mean']
+                for h, layer_key in enumerate(layers_keys):
+                    test_mean = net.test_mean[layer_key]
+                    running_mean = net.get_running_mean()[layer_key]
+                    dict_to_plot = {'Training Mean': test_mean, 'Test Mean': running_mean}
+                    axs_var[h].sns.displot(data=dict_to_plot, kind="kde", legend=False)
+
+                plt.suptitle('Comparison of Training and Test (Adversarial) Channel Mean')
+                fig_mean.text(0.45, 0.03, 'Channel Mean', va='center', fontsize=14)
+                fig_mean.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+                legend = fig_mean.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+                frame = legend.get_frame()
+                frame.set_color('white')
+                frame.set_edgecolor('red')
+                fig_mean.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+                fig_mean.savefig(path_out + 'mean_comaprison.jpg')
+
         with torch.no_grad():
             if FLAGS.test_noisy and not FLAGS.noise_before_PGD:
                 print('Adversarial Test With Noise ...')

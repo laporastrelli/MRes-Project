@@ -408,7 +408,6 @@ class proxy_VGG3(nn.Module):
         self.get_bn_parameters(get_variance=True)
         return self.running_variances
     
-    
     def get_bn_int_from_name(self):
         temp = self.run_name.split('_')[1]
         if temp == 'bn':

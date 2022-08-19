@@ -99,7 +99,6 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                                 uniform_lambda=True,
                                                 train_mode=train_mode)
                 
-
         if FLAGS.train_noisy:
             print("Noisy Training ...")
             net = noisy_VGG_train.noisy_VGG_train(net, FLAGS.train_noise_variance, FLAGS.device)
@@ -111,6 +110,7 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                           eval_mode=FLAGS.use_pop_stats,
                                           device=FLAGS.device,
                                           noise_variance=FLAGS.noise_variance, 
+                                          run_name=run_name,
                                           train_mode=FLAGS.train,
                                           regularization_mode=FLAGS.regularization_mode)
         

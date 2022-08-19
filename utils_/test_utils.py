@@ -399,7 +399,8 @@ def calculate_capacity(net,
                        get_BN_names=False, 
                        net_analysis=False, 
                        distribution_analysis=False, 
-                       index_order_analysis=True):
+                       index_order_analysis=True,
+                       get_bias=True):
     
     print('Calculating Capacity')
 
@@ -434,6 +435,8 @@ def calculate_capacity(net,
     # lambda-based capacity calculation
     if capacity_mode == 'lambda_based':
         lambdas = net.get_bn_parameters()
+        if get_bias:
+            betas = net.get_bn_biases()
         if get_BN_names:
             net.get_BN_names()
             BN_names = net.BN_names
@@ -449,9 +452,14 @@ def calculate_capacity(net,
                 path_out += str(beta).replace('.', '') + '/'
                 if not os.path.isdir(path_out): 
                     os.mkdir(path_out)
-            path_out += 'lambdas.npy'
-            if not os.path.isfile(path_out):
-                np.save(path_out, lambdas)
+            path_to_dir = path_out + 'lambdas.npy'
+            if not os.path.isfile(path_to_dir):
+                np.save(path_to_dir, lambdas)
+            path_to_dir = path_out + 'betas.npy'
+            if not os.path.isfile(path_to_dir):
+                print('cacca')
+                np.save(path_to_dir, betas)
+                print(os.path.isfile(path_to_dir))
 
     # variance-based capacity calculation
     elif capacity_mode == 'variance_based':
@@ -3129,10 +3137,22 @@ def test_SquareAttack(model,
                       run_name,
                       epsilon,
                       n_queries,
-                      eval_mode=True):
+                      eval_mode=True,
+                      attack='Square'):
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model.to(device)
+    
+    print('RUN NAME: ', run_name)
+    print('EPSILON: ', epsilon)
+
+    model = proxy_VGG(model, 
+                      eval_mode=eval_mode,
+                      device=device,
+                      run_name=run_name)
+    
+    running_var_dict = model.get_running_variance()
+    running_mean_dict = model.get_running_mean()
 
     # set eval mode for inference 
     if eval_mode: model.eval()
@@ -3142,27 +3162,47 @@ def test_SquareAttack(model,
     # getting min and max pixel values to be used in PGD for clamping
     min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
 
-    version = 'custom'
-    adversary = AutoAttack(model, 
-                           norm='Linf', 
-                           eps=epsilon, 
-                           version=version,
-                           device=device,
-                           verbose=False,
-                           min_tensor=min_tensor, 
-                           max_tensor=max_tensor, 
-                           n_queries=n_queries)
+    if attack == 'Square':    
+        version = 'custom'
+        adversary = AutoAttack(model, 
+                            norm='Linf', 
+                            eps=epsilon, 
+                            version=version,
+                            device=device,
+                            verbose=False,
+                            min_tensor=min_tensor, 
+                            max_tensor=max_tensor, 
+                            n_queries=n_queries)
 
-    adversary.attacks_to_run = ['square']
+        adversary.attacks_to_run = ['square']
 
     total = 0
     correct_s = 0
-    for _, data in enumerate(test_loader, 0):
+    for j, data in enumerate(test_loader, 0):
+        print('Batch: ', j)
+
+        if j == 1:
+            break
+
         X, y = data
         X, y = X.to(device), y.to(device)
 
-        advimg = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), 
-                 bs=X.size(0))
+        if attack == 'PGD':
+            delta = pgd_linf(model, 
+                            X, 
+                            y, 
+                            epsilon, 
+                            max_tensor, 
+                            min_tensor,
+                            alpha=epsilon/10, 
+                            num_iter=40, 
+                            noise_injection=False)                                                
+                
+            advimg = X + delta[0]
+
+        if attack == 'Square':
+            advimg = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), 
+                    bs=X.size(0))
         
         outputs = model(advimg)
         outputs_clean = model(X)
@@ -3174,6 +3214,62 @@ def test_SquareAttack(model,
 
         total += y.size(0)
         correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+
+        layers = [0,1,2,5,8,10,12,15]
+        layers_keys = ['BN_' + str(t) for t in layers]
+        legend_labels = ['Test Standard Deviation', ' Training Standard Deviation']
+
+        fig_var, axs_var = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+        axs_var = axs_var.ravel()
+        for h, layer_key in enumerate(layers_keys):
+            test_var = model.test_variance[layer_key].cpu()
+            running_var = running_var_dict[layer_key].cpu()
+            dict_to_plot = {'Training Standard Deviation': torch.sqrt(running_var), 'Test Standard Deviation': torch.sqrt(test_var)}
+            sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_var[h])
+            axs_var[h].set_title('Layer - ' + str(layers[h]))
+
+        plt.suptitle('Comparison of Training and Test (Adversarial) Channel Standard Deviation - ' + r'$\epsilon = $' + str(epsilon/5), fontsize=16)
+        fig_var.text(0.45, 0.03, 'Channel Standard Deviation', va='center', fontsize=14)
+        fig_var.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+        legend = fig_var.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+        frame = legend.get_frame()
+        frame.set_color('white')
+        frame.set_edgecolor('red')
+        fig_var.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+        root_to_save = './results/'
+        path_out = root_to_save + run_name.split('_')[0] + '/' 
+        path_out += 'no_eval' + '/' 
+        path_out += attack + '/'
+        path_out += 'statistics_comaprison' + '/'
+        if not os.path.isdir(path_out): os.mkdir(path_out)
+        path_out += run_name +'/'
+        if not os.path.isdir(path_out): os.mkdir(path_out)
+        path_out += 'batch_' + str(j) + '/'
+        if not os.path.isdir(path_out): os.mkdir(path_out)
+        path_out += 'epsilon_' + str(epsilon).replace('.', '') + '/'
+        if not os.path.isdir(path_out): os.mkdir(path_out)
+        fig_var.savefig(path_out + 'variance_comaprison.jpg')
+        plt.close()
+
+        fig_mean, axs_mean = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+        axs_mean = axs_mean.ravel()
+        legend_labels = ['Training Mean', 'Test Mean']
+        for h, layer_key in enumerate(layers_keys):
+            test_mean = model.test_mean[layer_key]
+            running_mean = running_mean_dict[layer_key].cpu()
+            dict_to_plot = {'Training Mean': running_mean, 'Test Mean': test_mean.cpu()}
+            sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_mean[h])
+
+        plt.suptitle('Comparison of Training and Test (Adversarial) Channel Mean - ' + r'$\epsilon = ' + str(epsilon/5), fontsize=16)
+        fig_mean.text(0.45, 0.03, 'Channel Mean', va='center', fontsize=14)
+        fig_mean.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+        legend = fig_mean.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+        frame = legend.get_frame()
+        frame.set_color('white')
+        frame.set_edgecolor('red')
+        fig_mean.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+        fig_mean.savefig(path_out + 'mean_comaprison.jpg')
+        plt.close()
 
     return correct_s/total
 
