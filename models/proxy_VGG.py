@@ -37,7 +37,11 @@ class proxy_VGG(nn.Module):
         self.verbose = verbose
         self.run_name = run_name
         self.bn_parameters = {}
+        self.bn_biases = {}
         self.test_variance = {}
+        self.test_mean = {}
+        self.running_variances = {}
+        self.running_means = {}
         self.gradients = 0
         self.train_mode = train_mode
         self.regularization_mode = regularization_mode
@@ -70,6 +74,10 @@ class proxy_VGG(nn.Module):
             self.classifier = net.classifier
             if self.regularization_mode in ['uniform_lambda', 'BN_once']:
                 self.set_gradient_mode(which='lambda')
+            elif self.regularization_mode == 'lambda_and_beta':
+                self.set_gradient_mode(which='lambda_and_beta')
+            elif self.regularization_mode == 'uniform_beta':
+                self.set_gradient_mode(which='uniform_beta')
         ###########################################
     
     def set_grad(self, var):
@@ -81,8 +89,12 @@ class proxy_VGG(nn.Module):
         for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
-                if which == 'lambda':
+                if which in ['lambda', 'lambda_and_beta']:
                     model.weight.requires_grad = False
+                    if which == 'lambda_and_beta':
+                        model.bias.requires_grad = False
+                elif which == 'uniform_beta':
+                    model.bias.requires_grad = False
                 elif which == 'running_stats':
                     model.running_var.requires_grad = False
                     model.running_mean.requires_grad = False
@@ -137,9 +149,12 @@ class proxy_VGG(nn.Module):
 
                 if self.verbose and self.get_bn_int_from_name() in [100, 1]:
                     #self.activations['BN_' + str(bn_count)] = x
-                    var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
+                    var_test = x.var([0, 2, 3], unbiased=False).to(self.device).detach()
                     self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
                     self.test_variance['BN_' + str(bn_count)] = var_test
+                    self.test_mean['BN_' + str(bn_count)] = x.mean([0, 2, 3]).detach()
+                    '''if bn_count in [0,1,2,5,8,10,12,15]:
+                        print(((var_test * (model.weight**2))/model.running_var).mean())'''
                     
                 if len(ch_activation)> 0 and self.get_bn_int_from_name() in [100, 1]:
                     ch, bn_idx, activation = ch_activation
@@ -203,15 +218,40 @@ class proxy_VGG(nn.Module):
         out = self.classifier(x)
 
         return out
-    
-    def get_bn_parameters(self):
+
+    def get_bn_parameters(self, get_variance=False, get_mean=False):
         bn_count = 0
-        for ii, model in enumerate(self.features): # BatchNorm layers are only present in the encoder of VGG19
+        for ii, model in enumerate(self.features):
             if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
-                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), \
+                       "Previous module should be Conv2d"
                 self.bn_parameters['BN_' + str(bn_count)] = model.weight.cpu().detach()
-                bn_count += 1
+                if get_variance:
+                    self.running_variances['BN_' + str(bn_count)] = model.running_var.detach()
+                if get_mean:
+                    self.running_means['BN_' + str(bn_count)] = model.running_mean.detach()
+                bn_count +=1
         return self.bn_parameters
+    
+    def get_bn_biases(self, get_variance=False):
+        bn_count = 0
+        for ii, model in enumerate(self.features):
+            if isinstance(model, torch.nn.modules.batchnorm.BatchNorm2d):
+                assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), \
+                       "Previous module should be Conv2d"
+                self.bn_biases['BN_' + str(bn_count)] = model.bias.cpu().detach()
+                if get_variance:
+                    self.running_variances['BN_' + str(bn_count)] = model.running_var.detach()
+                bn_count +=1
+        return self.bn_biases
+    
+    def get_running_variance(self):
+        self.get_bn_parameters(get_variance=True)
+        return self.running_variances
+    
+    def get_running_mean(self):
+        self.get_bn_parameters(get_mean=True)
+        return self.running_means
 
     def get_capacity(self):
         return self.capacity

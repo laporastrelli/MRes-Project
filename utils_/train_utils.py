@@ -318,7 +318,7 @@ def train(train_loader,
                     model.set_iteration_num(iterations=i, epoch=epoch_num)
                     regularizer = 0
 
-            if FLAGS.track_capacity and FLAGS.bounded_lambda and i in steps:
+            if FLAGS.track_capacity and i in steps:
                 fig, axs = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
                 axs = axs.ravel()
                 

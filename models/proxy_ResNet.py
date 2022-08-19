@@ -67,8 +67,10 @@ class proxy_ResNet(nn.Module):
         if self.train_mode:
             if self.regularization_mode == 'uniform_lambda':
                 self.set_gradient_mode(which='lambda')  
-            elif self.regularization_mode == 'BN_once':
+            elif self.regularization_mode == 'uniform_lambda_beta':
                 self.set_gradient_mode(which='lambda_and_beta')  
+            elif self.regularization_mode == 'uniform beta':
+                self.set_gradient_mode(which='beta')  
         
         elif not self.train_mode:
             if self.regularization_mode == 'uniform_lambda':
@@ -124,8 +126,9 @@ class proxy_ResNet(nn.Module):
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
-            self.net.bn1.weight.requires_grad = False
-            if which == 'lambda_and_beta':
+            if which in ['lambda_and_beta', 'lambda']:
+                self.net.bn1.weight.requires_grad = False
+            if which in ['lambda_and_beta', 'beta']:
                 self.net.bn1.bias.requires_grad = False
         # four consecutive layers each containing blocks made up from sublocks
         layers = [self.net.layer1, self.net.layer2, self.net.layer3, self.net.layer4]
@@ -140,26 +143,30 @@ class proxy_ResNet(nn.Module):
                 
                 # re-construct block
                 if bn_mode: 
-                    block.bn1.weight.requires_grad = False
-                    if which == 'lambda_and_beta':
+                    if which in ['lambda_and_beta', 'lambda']:
+                        block.bn1.weight.requires_grad = False
+                    if which in ['lambda_and_beta', 'beta']:
                         block.bn1.bias.requires_grad = False
                     
                 if bn_mode: 
-                    block.bn2.weight.requires_grad = False
-                    if which == 'lambda_and_beta':
+                    if which in ['lambda_and_beta', 'lambda']:
+                        block.bn2.weight.requires_grad = False
+                    if which in ['lambda_and_beta', 'beta']:
                         block.bn2.bias.requires_grad = False
 
                 if bn_mode: 
-                    block.bn3.weight.requires_grad = False
-                    if which == 'lambda_and_beta':
+                    if which in ['lambda_and_beta', 'lambda']:
+                        block.bn3.weight.requires_grad = False
+                    if which in ['lambda_and_beta', 'beta']:
                         block.bn3.bias.requires_grad = False
                 
                 shortcut = list(block.shortcut)
                 if len(shortcut) > 0:
                     for shortcut_layer in shortcut:
                         if isinstance(shortcut_layer, torch.nn.modules.batchnorm.BatchNorm2d):
-                            shortcut_layer.weight.requires_grad = False
-                            if which == 'lambda_and_beta':
+                            if which in ['lambda_and_beta', 'lambda']:
+                                shortcut_layer.weight.requires_grad = False
+                            if which in ['lambda_and_beta', 'beta']:
                                 shortcut_layer.bias.requires_grad = False
 
     def replace_activation(self, x, ch_activation, bn_count):

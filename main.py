@@ -85,24 +85,25 @@ def main(argv):
 
     # define test run params
     if FLAGS.test_run: index, bn_string, test_acc, adv_accs, result_log = set_test_run()
-    
+     
+
     # dict selection based on mode
+    if FLAGS.save_to_log:
+            columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
+                           'Training Mode', 'Test Accuracy', 'Epsilon Budget']
+
     if FLAGS.capacity_regularization:
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'beta-lagrange', 'Test Accuracy', 'Epsilon Budget']
     
-    if FLAGS.rank_init:
+    elif FLAGS.rank_init:
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:3]
         if FLAGS.save_to_log:
             columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
                            'Training Mode', 'pre-training-steps', 'Test Accuracy', 'Epsilon Budget']
-        
-    else:
-        if FLAGS.save_to_log:
-            columns_csv = ['Run', 'Model', 'Dataset', 'Batch-Normalization', 
-                           'Training Mode', 'Test Accuracy', 'Epsilon Budget'] 
+       
     ################################################################################################
 
     # save to results log if file not already saved
@@ -156,7 +157,7 @@ def main(argv):
     if FLAGS.adversarial_transferrability:
         print('Model ATTACKING: ', FLAGS.pretrained_name)
         print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
-        if str(FLAGS.pretrained_name.split('_')[0] + '_' + FLAGS.pretrained_name.split('_')[1]) == str(FLAGS.pretrained_name_to_attack.split('_')[0] + '_' + FLAGS.pretrained_name_to_attack.split('_')[1]):
+        if str(FLAGS.pretrained_name) == str(FLAGS.pretrained_name_to_attack):
             already_exists = True 
             print('The two models are the same')
         else:
@@ -320,28 +321,42 @@ def main(argv):
                 transfer_dict = {key_name_attacker: {key_name_attacked: transfer_acc}}
                 np.save(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, transfer_dict)
 
+                print(transfer_dict)
+
             # update and save dict (if it already exists)
             else:
                 counter_dict = np.load(root_to_save + 'adversarial_transferrability/' + counter_dict_name, allow_pickle='TRUE').item()
                 transfer_dict = np.load(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, allow_pickle='TRUE').item()
 
-                if key_name_attacker in list(transfer_dict.items()):
-                    if key_name_attacked in list(transfer_dict[key_name_attacker].items()):
-                        counter_dict[key_name_attacker][key_name_attacked] += 1
+                print(transfer_dict)
 
+                if key_name_attacker in list(transfer_dict.keys()):
+                    print('KEY NAME ATTACKER **ALREADY** IN DICT')
+                    if key_name_attacked in list(transfer_dict[key_name_attacker].keys()):
+                        print('KEY NAME **ATTACKED** **ALREADY** IN DICT')
+
+                        counter_dict[key_name_attacker][key_name_attacked] += 1
+                        
                         curr_mean = transfer_dict[key_name_attacker][key_name_attacked]
                         updated_count = counter_dict[key_name_attacker][key_name_attacked]
-                        updated_mean = (((updated_count-1)/updated_count)*curr_mean) + transfer_acc/updated_count
 
-                        transfer_dict[key_name_attacker][key_name_attacked] += updated_mean
+                        print('COUNT: ', updated_count)
+
+                        updated_mean = (((updated_count-1)/updated_count)*curr_mean) + (transfer_acc/updated_count)
+                        transfer_dict[key_name_attacker][key_name_attacked] = updated_mean
+
                     else:
-                        counter_dict[key_name_attacker].update({key_name_attacked: 1})
-                        transfer_dict[key_name_attacker].update({key_name_attacked: transfer_acc})
+                        counter_dict[key_name_attacker][key_name_attacked] = 1
+                        transfer_dict[key_name_attacker][key_name_attacked] = transfer_acc
                 else:
-                    to_update_transfer = {key_name_attacker: {key_name_attacked: transfer_acc}}
-                    transfer_dict.update(to_update_transfer)
+                    print('KEY NAME ATTACKER **NOT YET** IN DICT')
                     to_update_counter = {key_name_attacker: {key_name_attacked: 1}}
                     counter_dict.update(to_update_counter)
+
+                    to_update_transfer = {key_name_attacker: {key_name_attacked: transfer_acc}}
+                    transfer_dict.update(to_update_transfer)
+                
+                print(transfer_dict)
 
                 # save dict
                 np.save(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, transfer_dict)
