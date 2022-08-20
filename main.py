@@ -137,7 +137,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and not FLAGS.train:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
             already_exists = True 
         elif get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
             already_exists = True 
@@ -165,7 +165,6 @@ def main(argv):
     if FLAGS.test_low_pass_robustness:
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True
-
     if len(FLAGS.prune_mode) > 0 :
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True

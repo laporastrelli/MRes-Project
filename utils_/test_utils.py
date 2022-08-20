@@ -111,7 +111,7 @@ def test(net,
 
     if prune_mode == '':
         # net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
-        net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+        net.load_state_dict(torch.load(model_path, map_location='cpu'))
         net.to(device)
 
     if inject_noise:
@@ -1016,6 +1016,7 @@ def adversarial_test(net,
 
             if attack == 'FGSM':
                 delta = fgsm(net, X, y, epsilon)
+                adv_inputs = X + delta[0]
                     
             elif attack == 'PGD':
                 # ------ Custom PGD function
@@ -3409,6 +3410,38 @@ def adversarial_transferrability(model,
             delta = torch.load(path + name_out)
             input = X + delta.to(device)
         
+        # find adversarial samples in batch:
+        
+        outputs_temp = model(input)
+        _, predicted_temp = torch.max(outputs_temp.data, 1)
+        incorrect_samples = (predicted_temp != y).cpu().numpy()
+        incorrect_samples.astype(int)
+        incorrect_samples_cnt = np.sum(incorrect_samples)
+
+        X_positive = torch.zeros((incorrect_samples_cnt, X.size()[1], X.size()[2], X.size()[3]))
+        Y_positive = torch.zeros((incorrect_samples_cnt))
+
+        X_negative = torch.zeros((incorrect_samples_cnt, X.size()[1], X.size()[2], X.size()[3]))
+        Y_negative = torch.zeros((incorrect_samples_cnt))
+
+        cnt = 0
+        for idx, x_adv in enumerate(input, 0):
+            if incorrect_samples[idx] == 1:
+
+                X_positive[cnt] = X[idx]
+                Y_positive[cnt] = y[idx]
+
+                X_negative[cnt] = x_adv
+                Y_negative[cnt] = y[idx]
+
+                cnt+=1
+
+        X_positive = X_positive.to(device)
+        Y_positive = Y_positive.to(device)
+
+        X_negative = X_negative.to(device)
+        Y_negative = Y_negative.to(device)        
+        
         # now test the obtained perturbations on the second model
         # load model from which attacks are transferred
         model_2.load_state_dict(torch.load(model_path_2, map_location='cpu'))
@@ -3418,10 +3451,10 @@ def adversarial_transferrability(model,
         if eval_mode: model_2.eval()
         if run_name_2.find('VGG')!= -1: model_2.classifier.eval()
         # print('EVAL MODE: ', not model_2.training)
-
-        with torch.no_grad():
-            outputs_clean = model_2(X)
-            outputs = model_2(input)
+                                    
+        with torch.no_grad():                                                                                           
+            outputs_clean = model_2(X_positive)
+            outputs = model_2(X_negative)
             
         _, predicted_clean = torch.max(outputs_clean.data, 1)
         _, predicted = torch.max(outputs.data, 1)
@@ -3429,9 +3462,9 @@ def adversarial_transferrability(model,
         #print('clean ------------------------------: ', (predicted_clean == y).sum().item())
         #print('adversarial ------------------------------: ', (predicted == y).sum().item())
 
-        total += y.size(0)
-        correct_clean += (predicted_clean == y).sum().item()
-        correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
+        total += Y_positive.size(0)
+        correct_clean += (predicted_clean == Y_positive).sum().item()
+        correct_s += (torch.logical_and(predicted == Y_negative, predicted_clean == Y_positive)).sum().item()
 
     print('Adversarial transferred accuracy: ', correct_s/total)
 
