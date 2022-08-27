@@ -17,6 +17,7 @@ import time
 
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
+from wandb import visualize
 from zmq import EVENT_CLOSE_FAILED
 from utils_.adversarial_attack import fgsm, pgd_linf, pgd_linf_capacity, pgd_linf_total_capacity
 from utils_ import get_model
@@ -52,7 +53,7 @@ def model_setup(net,
                 prune_percentage=1.0, 
                 layer_to_test=0):
 
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## MODEL SELECTION ##################
@@ -388,9 +389,9 @@ def calculate_capacity(net,
                        attack,
                        epsilon, 
                        num_iter,
-                       capacity_mode='variance_based',
+                       capacity_mode='lambda_based',
                        use_pop_stats=True,
-                       batch=1,
+                       batch=3,
                        noise_variance=0,
                        capacity_regularization=False,
                        beta=0,
@@ -421,7 +422,7 @@ def calculate_capacity(net,
 
     # create root directory for saving content
     if save_analysis:
-        path_out = './results/'
+        path_out = './gpucluster/SVHN/'
         path_out += get_model_name(run_name) + '/'
         if use_pop_stats:
             eval_mode_str = 'eval'
@@ -458,14 +459,13 @@ def calculate_capacity(net,
                 np.save(path_to_dir, lambdas)
             path_to_dir = path_out + 'betas.npy'
             if not os.path.isfile(path_to_dir):
-                print('cacca')
                 np.save(path_to_dir, betas)
                 print(os.path.isfile(path_to_dir))
 
     # variance-based capacity calculation
     elif capacity_mode == 'variance_based':
-        
         if net_analysis:
+            path_to_save = ''
             net_change = np.zeros((batch, len(layer_key)))
             for i, data in enumerate(test_loader, 0):
                 if i < batch:
@@ -513,15 +513,16 @@ def calculate_capacity(net,
             mean_net_change = np.mean(net_change, axis=0)
             var_net_change = np.var(net_change, axis=0)
 
-            path_out += 'all_layers/clean_test/global_analysis' + '/' 
-            if not os.path.isdir(path_out): os.mkdir(path_out)
-            path_out +=  run_name + '/'
-            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_to_save = path_out + 'all_layers/clean_test/global_analysis' + '/' 
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+            path_to_save +=  run_name + '/'
+            if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
 
-            np.save(path_out + '/mean_net_change_' + str(epsilon).replace('.', '') + '.npy', mean_net_change)
-            np.save(path_out + '/var_net_change' + str(epsilon).replace('.', '') + '.npy', var_net_change)
+            np.save(path_to_save + '/mean_net_change_' + str(epsilon).replace('.', '') + '.npy', mean_net_change)
+            np.save(path_to_save + '/var_net_change' + str(epsilon).replace('.', '') + '.npy', var_net_change)
         
         elif distribution_analysis:
+            path_to_save = ''
             for i, data in enumerate(test_loader, 0):
 
                 if i < batch:
@@ -570,7 +571,12 @@ def calculate_capacity(net,
                     if run_name.find('VGG') != -1:
                         layers_to_save = [0,1,2,5,8,10,12,15]
                     else:
-                        layers_to_save = [0,1,2,10,20,30,39,49]
+                        if run_name.find('ResNet18') != -1:
+                            layers_to_save = [0,1,2,5,8,10,12,15]
+                        if run_name.find('ResNet34') != -1:
+                            layers_to_save = [0,1,2,10,15,20,25,30]
+                        else:
+                            layers_to_save = [0,1,2,10,20,30,39,49]
                     keys_to_save = ['BN_' + str(i) for i in layers_to_save]
                     for chn, key_ in enumerate(layer_key):
                         if key_ in keys_to_save:
@@ -679,8 +685,8 @@ def calculate_capacity(net,
                                 capacity_diff[key_] = temp
                 
                 for layer in list(capacity_diff.keys()):
-                    path_to_save = path_out + layer + '/'
-                    if not os.path.isdir(path_to_save): os.mkdir(path_to_save)
+                    path_to_save_out = path_out + layer + '/'
+                    if not os.path.isdir(path_to_save_out): os.mkdir(path_to_save_out)
 
                     if batch > 1:
                         to_save_mean = np.mean(np.array(capacity_diff[layer]), axis=0)
@@ -688,9 +694,9 @@ def calculate_capacity(net,
                     else:
                         to_save_mean = np.array(capacity_diff[layer])
 
-                    np.save(path_to_save + 'diff_mean_eps' + str(epsilon).replace(',', '') + '.npy', to_save_mean)
+                    np.save(path_to_save_out + 'diff_mean_eps' + str(epsilon).replace(',', '') + '.npy', to_save_mean)
                     if batch > 1:
-                        np.save(path_to_save + 'diff_var_eps' + str(epsilon).replace(',', '') + '.npy', to_save_var)
+                        np.save(path_to_save_out + 'diff_var_eps' + str(epsilon).replace(',', '') + '.npy', to_save_var)
 
         else:
             for i, data in enumerate(test_loader, 0):
@@ -972,7 +978,7 @@ def adversarial_test(net,
                      transfer_mode='capacity_based'):
 
     #net.load_state_dict(torch.load(model_path))
-    net.load_state_dict(torch.load(model_path, map_location='cpu'))
+    net.load_state_dict(torch.load(model_path, map_location='cuda:0'))
     net.to(device)
 
     ################## MODE SELECTION ##################
@@ -2276,7 +2282,12 @@ def IB_noise_calculation(model,
 
     # initiate model
     if run_name.find('VGG')!= -1:
-        n_channels = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512, 512, 512]
+
+        if run_name.find('VGG19')!= -1:
+            n_channels = [64, 64, 128, 128, 256, 256, 256, 256, 512, 512, 512, 512, 512, 512, 512, 512]
+        elif run_name.find('VGG16')!= -1:
+            n_channels = [64, 64, 128, 128, 256, 256, 256, 512, 512, 512, 512, 512, 512]
+
         model = proxy_VGG3(model, 
                            eval_mode=eval_mode,
                            device=device,
@@ -2292,6 +2303,7 @@ def IB_noise_calculation(model,
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         else: 
             noise_length = n_channels[int(layer_to_test)]
+<<<<<<< HEAD
         
         if layer_to_test in [8, 12]:
             additional_noise = 0.75
@@ -2299,6 +2311,15 @@ def IB_noise_calculation(model,
             additional_noise = 0.
         
         model.noise_std = additional_noise + torch.zeros(noise_length, device=device, requires_grad=True) 
+=======
+
+        if run_name.find('VGG16')!= -1 and int(layer_to_test) in [1, 2, 5, 7]:
+            initial_noise = 0.5
+        else:
+            initial_noise = 0
+
+        model.noise_std = initial_noise + torch.zeros(noise_length, device=device, requires_grad=True) 
+>>>>>>> 497862301048d894d2b8bebde591f33f18edc5ce
 
         # get channel variance
         if get_bn_int_from_name(run_name) in [100, 1]: 
@@ -2349,7 +2370,7 @@ def IB_noise_calculation(model,
     # create path
     if model_path.find('bitbucket') != -1:
         print(model_path)
-        root_path = './gpucluster/CIFAR10/' + get_model_name(run_name) + '/'
+        root_path = './gpucluster/SVHN/' + get_model_name(run_name) + '/'
     else:
         root_path = './results/' + get_model_name(run_name) + '/'
 
@@ -2570,7 +2591,11 @@ def IB_noise_calculation(model,
             # noise update
             model.noise_std = model.noise_std - lr*model.noise_std.grad.detach()
         
-        if run_name.find('VGG')!= -1: acc_th = 0.905
+        if run_name.find('VGG')!= -1:
+            if run_name.find('VGG19')!= -1:
+                acc_th = 0.905
+            elif run_name.find('VGG16')!= -1:
+                acc_th = 0.92
         elif run_name.find('ResNet')!= -1: acc_th = 0.925
         if acc > acc_th:
             break
@@ -3278,7 +3303,8 @@ def test_SquareAttack(model,
                       epsilon,
                       n_queries,
                       eval_mode=True,
-                      attack='Square'):
+                      attack='Square', 
+                      visualization=False):
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model.to(device)
@@ -3286,13 +3312,14 @@ def test_SquareAttack(model,
     print('RUN NAME: ', run_name)
     print('EPSILON: ', epsilon)
 
-    model = proxy_VGG(model, 
-                      eval_mode=eval_mode,
-                      device=device,
-                      run_name=run_name)
-    
-    running_var_dict = model.get_running_variance()
-    running_mean_dict = model.get_running_mean()
+    if visualization:
+        model = proxy_VGG(model, 
+                        eval_mode=eval_mode,
+                        device=device,
+                        run_name=run_name)
+        
+        running_var_dict = model.get_running_variance()
+        running_mean_dict = model.get_running_mean()
 
     # set eval mode for inference 
     if eval_mode: model.eval()
@@ -3318,10 +3345,10 @@ def test_SquareAttack(model,
 
     total = 0
     correct_s = 0
+    
     for j, data in enumerate(test_loader, 0):
         print('Batch: ', j)
-
-        if j == 1:
+        if j == 16:
             break
 
         X, y = data
@@ -3355,61 +3382,62 @@ def test_SquareAttack(model,
         total += y.size(0)
         correct_s += (torch.logical_and(predicted == y, predicted_clean == y)).sum().item()
 
-        layers = [0,1,2,5,8,10,12,15]
-        layers_keys = ['BN_' + str(t) for t in layers]
-        legend_labels = ['Test Standard Deviation', ' Training Standard Deviation']
+        if visualization:
+            layers = [0,1,2,5,8,10,12,15]
+            layers_keys = ['BN_' + str(t) for t in layers]
+            legend_labels = ['Test Standard Deviation', ' Training Standard Deviation']
 
-        fig_var, axs_var = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
-        axs_var = axs_var.ravel()
-        for h, layer_key in enumerate(layers_keys):
-            test_var = model.test_variance[layer_key].cpu()
-            running_var = running_var_dict[layer_key].cpu()
-            dict_to_plot = {'Training Standard Deviation': torch.sqrt(running_var), 'Test Standard Deviation': torch.sqrt(test_var)}
-            sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_var[h])
-            axs_var[h].set_title('Layer - ' + str(layers[h]))
+            fig_var, axs_var = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+            axs_var = axs_var.ravel()
+            for h, layer_key in enumerate(layers_keys):
+                test_var = model.test_variance[layer_key].cpu()
+                running_var = running_var_dict[layer_key].cpu()
+                dict_to_plot = {'Training Standard Deviation': torch.sqrt(running_var), 'Test Standard Deviation': torch.sqrt(test_var)}
+                sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_var[h])
+                axs_var[h].set_title('Layer - ' + str(layers[h]))
 
-        plt.suptitle('Comparison of Training and Test (Adversarial) Channel Standard Deviation - ' + r'$\epsilon = $' + str(epsilon/5), fontsize=16)
-        fig_var.text(0.45, 0.03, 'Channel Standard Deviation', va='center', fontsize=14)
-        fig_var.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
-        legend = fig_var.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
-        frame = legend.get_frame()
-        frame.set_color('white')
-        frame.set_edgecolor('red')
-        fig_var.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
-        root_to_save = './results/'
-        path_out = root_to_save + run_name.split('_')[0] + '/' 
-        path_out += 'no_eval' + '/' 
-        path_out += attack + '/'
-        path_out += 'statistics_comaprison' + '/'
-        if not os.path.isdir(path_out): os.mkdir(path_out)
-        path_out += run_name +'/'
-        if not os.path.isdir(path_out): os.mkdir(path_out)
-        path_out += 'batch_' + str(j) + '/'
-        if not os.path.isdir(path_out): os.mkdir(path_out)
-        path_out += 'epsilon_' + str(epsilon).replace('.', '') + '/'
-        if not os.path.isdir(path_out): os.mkdir(path_out)
-        fig_var.savefig(path_out + 'variance_comaprison.jpg')
-        plt.close()
+            plt.suptitle('Comparison of Training and Test (Adversarial) Channel Standard Deviation - ' + r'$\epsilon = $' + str(epsilon/5), fontsize=16)
+            fig_var.text(0.45, 0.03, 'Channel Standard Deviation', va='center', fontsize=14)
+            fig_var.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+            legend = fig_var.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+            frame = legend.get_frame()
+            frame.set_color('white')
+            frame.set_edgecolor('red')
+            fig_var.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+            root_to_save = './results/'
+            path_out = root_to_save + run_name.split('_')[0] + '/' 
+            path_out += 'no_eval' + '/' 
+            path_out += attack + '/'
+            path_out += 'statistics_comaprison' + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out += run_name +'/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out += 'batch_' + str(j) + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            path_out += 'epsilon_' + str(epsilon).replace('.', '') + '/'
+            if not os.path.isdir(path_out): os.mkdir(path_out)
+            fig_var.savefig(path_out + 'variance_comaprison.jpg')
+            plt.close()
 
-        fig_mean, axs_mean = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
-        axs_mean = axs_mean.ravel()
-        legend_labels = ['Training Mean', 'Test Mean']
-        for h, layer_key in enumerate(layers_keys):
-            test_mean = model.test_mean[layer_key]
-            running_mean = running_mean_dict[layer_key].cpu()
-            dict_to_plot = {'Training Mean': running_mean, 'Test Mean': test_mean.cpu()}
-            sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_mean[h])
+            fig_mean, axs_mean = plt.subplots(nrows=2, ncols=4, sharey=False, figsize=(13,7))
+            axs_mean = axs_mean.ravel()
+            legend_labels = ['Training Mean', 'Test Mean']
+            for h, layer_key in enumerate(layers_keys):
+                test_mean = model.test_mean[layer_key]
+                running_mean = running_mean_dict[layer_key].cpu()
+                dict_to_plot = {'Training Mean': running_mean, 'Test Mean': test_mean.cpu()}
+                sns.kdeplot(data=dict_to_plot, legend=False, ax=axs_mean[h])
 
-        plt.suptitle('Comparison of Training and Test (Adversarial) Channel Mean - ' + r'$\epsilon = ' + str(epsilon/5), fontsize=16)
-        fig_mean.text(0.45, 0.03, 'Channel Mean', va='center', fontsize=14)
-        fig_mean.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
-        legend = fig_mean.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
-        frame = legend.get_frame()
-        frame.set_color('white')
-        frame.set_edgecolor('red')
-        fig_mean.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
-        fig_mean.savefig(path_out + 'mean_comaprison.jpg')
-        plt.close()
+            plt.suptitle('Comparison of Training and Test (Adversarial) Channel Mean - ' + r'$\epsilon = ' + str(epsilon/5), fontsize=16)
+            fig_mean.text(0.45, 0.03, 'Channel Mean', va='center', fontsize=14)
+            fig_mean.text(0.02, 0.5, 'Density', va='center', rotation='vertical', fontsize=14)
+            legend = fig_mean.legend(legend_labels, ncol=len(legend_labels),loc="upper center", bbox_to_anchor=[0.5, 0.92])
+            frame = legend.get_frame()
+            frame.set_color('white')
+            frame.set_edgecolor('red')
+            fig_mean.tight_layout(pad=2, rect=[0.03, 0.05, 1, 0.95])
+            fig_mean.savefig(path_out + 'mean_comaprison.jpg')
+            plt.close()
 
     return correct_s/total
 

@@ -134,7 +134,11 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and not FLAGS.train:
+<<<<<<< HEAD
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+=======
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0,100]:
+>>>>>>> 497862301048d894d2b8bebde591f33f18edc5ce
             already_exists = True 
         elif get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
             already_exists = True 
@@ -148,12 +152,14 @@ def main(argv):
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
-    if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
-        if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
-            already_exists = True 
+    if FLAGS.adversarial_test and 'FGSM' in FLAGS.attacks_in:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0]:
+            already_exists = True
     if FLAGS.adversarial_transferrability:
         print('Model ATTACKING: ', FLAGS.pretrained_name)
         print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
+        if FLAGS.dataset == 'SVHN':
+            FLAGS.epsilon_in = FLAGS.epsilon_in[1:4]
         if str(FLAGS.pretrained_name) == str(FLAGS.pretrained_name_to_attack):
             already_exists = True 
             print('The two models are the same')
@@ -304,24 +310,32 @@ def main(argv):
             # get name of key and sub-key
             key_name_attacker = str(FLAGS.pretrained_name.split('_')[0] + '_' + FLAGS.pretrained_name.split('_')[1])
             key_name_attacked = str(FLAGS.pretrained_name_to_attack.split('_')[0] + '_' + FLAGS.pretrained_name_to_attack.split('_')[1])
-            
+
+            if str(os.getcwd()).find('bitbucket') != -1:
+                if FLAGS.dataset=='SVHN':
+                    root_to_save = './gpucluster/SVHN/'
+                elif FLAGS.dataset=='CIFAR10':
+                    root_to_save = './gpucluster/CIFAR10/'
+                elif FLAGS.dataset=='CIFAR100':
+                    root_to_save = './gpucluster/CIFAR100/'
+            else:
+                root_to_save = './results/'
+
             # create and save dict (if it doesn't exist yet)
-            if not os.path.isfile('./results/adversarial_transferrability/' + transfer_dict_name):
-                print('CREATING DICT')
+            if not os.path.isfile(root_to_save + 'adversarial_transferrability/' + transfer_dict_name):
 
                 counter_dict = {key_name_attacker: {key_name_attacked: 1}}
-                np.save('./results/adversarial_transferrability/' + counter_dict_name, counter_dict)
+                np.save(root_to_save + 'adversarial_transferrability/' + counter_dict_name, counter_dict)
 
                 transfer_dict = {key_name_attacker: {key_name_attacked: transfer_acc}}
-                np.save('./results/adversarial_transferrability/' + transfer_dict_name, transfer_dict)
+                np.save(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, transfer_dict)
 
                 print(transfer_dict)
 
             # update and save dict (if it already exists)
             else:
-                
-                counter_dict = np.load('./results/adversarial_transferrability/' + counter_dict_name, allow_pickle='TRUE').item()
-                transfer_dict = np.load('./results/adversarial_transferrability/' + transfer_dict_name, allow_pickle='TRUE').item()
+                counter_dict = np.load(root_to_save + 'adversarial_transferrability/' + counter_dict_name, allow_pickle='TRUE').item()
+                transfer_dict = np.load(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, allow_pickle='TRUE').item()
 
                 print(transfer_dict)
 
@@ -354,8 +368,8 @@ def main(argv):
                 print(transfer_dict)
 
                 # save dict
-                np.save('./results/adversarial_transferrability/' + transfer_dict_name, transfer_dict)
-                np.save('./results/adversarial_transferrability/' + counter_dict_name, counter_dict)
+                np.save(root_to_save + 'adversarial_transferrability/' + transfer_dict_name, transfer_dict)
+                np.save(root_to_save + 'adversarial_transferrability/' + counter_dict_name, counter_dict)
 
         if FLAGS.save_to_log:
             model_name_ = FLAGS.model_name

@@ -61,7 +61,20 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                             regularization_mode=FLAGS.regularization_mode, 
                                             bounded_lambda=FLAGS.bounded_lambda)
     
-    if model_name == 'ResNet18':
+    elif model_name == 'ResNet34':
+        if sum(where_bn)>1:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet34(where_bn=where_bn)
+            else:
+                
+                net = ResNet_v1.ResNet34(where_bn=where_bn, normalization=FLAGS.normalization)
+        else:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet34(where_bn=where_bn)
+            else:
+                net = ResNet_v1.ResNet34(where_bn=where_bn, normalization=FLAGS.normalization)
+
+    elif model_name == 'ResNet18':
         print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
         if sum(where_bn)>1:
             if int(FLAGS.version) == 2:
@@ -73,6 +86,24 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                 net = ResNet_v2.resnet18(where_bn=where_bn)
             else:
                 net = ResNet_v1.ResNet18(where_bn=where_bn, normalization=FLAGS.normalization)
+    
+    elif model_name == 'ResNet101':
+        if FLAGS.dataset == 'CIFAR100':
+            n_classes = 100
+        else:
+            n_classes = 10
+            
+        print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
+        if sum(where_bn)>1:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet101(where_bn=where_bn, num_classes=n_classes)
+            else:
+                net = ResNet_v1.ResNet101(where_bn=where_bn, normalization=FLAGS.normalization, num_classes=n_classes)
+        else:
+            if int(FLAGS.version) == 2:
+                net = ResNet_v2.ResNet101(where_bn=where_bn, num_classes=n_classes)
+            else:
+                net = ResNet_v1.ResNet101(where_bn=where_bn, normalization=FLAGS.normalization, num_classes=n_classes)
 
     elif model_name == 'VGG19':
         if FLAGS.dataset == 'CIFAR100':

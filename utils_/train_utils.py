@@ -100,7 +100,6 @@ def train(train_loader,
                 grad_clip = True
                 grad_clip_val = 0.1
             
-        
         if FLAGS.dataset == 'CIFAR100':
             opt_func = optim.SGD
             momentum=0.9
@@ -202,7 +201,7 @@ def train(train_loader,
             grad_clip = False
             lr_ = 0.01
             if model_name.find('VGG16')!= -1 and (batch_norm and sum(FLAGS.where_bn)>1):
-                lr_ = 0.05
+                lr_ = 0.01
             if FLAGS.normalization == 'ln' or FLAGS.nonlinear_lambda or FLAGS.dropout_lambda:
                 lr_ = 0.001
             elif  FLAGS.normalization == 'bn' and FLAGS.train_small_lr:
@@ -565,6 +564,7 @@ def train(train_loader,
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
                     regularizer = 0
+<<<<<<< HEAD
                 elif FLAGS.regularization_mode == 'bn_entropic_regularization':
                     if epoch_num < 1:
                         regularizer = 0
@@ -574,6 +574,8 @@ def train(train_loader,
                         regularizer = FLAGS.beta*(regularizer)
                         print(regularizer.requires_grad)
                         loss -= regularizer
+=======
+>>>>>>> 497862301048d894d2b8bebde591f33f18edc5ce
                 
             opt.zero_grad()
             loss.backward()
