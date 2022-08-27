@@ -564,7 +564,6 @@ def train(train_loader,
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
                     regularizer = 0
-<<<<<<< HEAD
                 elif FLAGS.regularization_mode == 'bn_entropic_regularization':
                     if epoch_num < 1:
                         regularizer = 0
@@ -574,8 +573,6 @@ def train(train_loader,
                         regularizer = FLAGS.beta*(regularizer)
                         print(regularizer.requires_grad)
                         loss -= regularizer
-=======
->>>>>>> 497862301048d894d2b8bebde591f33f18edc5ce
                 
             opt.zero_grad()
             loss.backward()
