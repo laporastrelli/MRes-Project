@@ -171,15 +171,7 @@ def get_data():
     if FLAGS.mode == 'optimum':
         FLAGS.batch_size = 400
 
-    if FLAGS.dataset == 'CIFAR10':
-            # performs transforms on data
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-            ])
-        
+    if FLAGS.dataset == 'CIFAR10':        
         if FLAGS.train_with_GaussianBlurr:
             transform_train = transforms.Compose([
                 transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
@@ -193,10 +185,17 @@ def get_data():
             transform_train = transforms.Compose([
                 transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
                 transforms.RandomHorizontalFlip(),
-                transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
                 LowPass(),
+                ])
+        
+        else:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
                 ])
 
         transform_test = transforms.Compose([
@@ -224,19 +223,40 @@ def get_data():
         test_set = datasets.CIFAR100(FLAGS.dataset_path + FLAGS.dataset, train=False, download=download, transform=transform_test)
 
     elif FLAGS.dataset == 'SVHN':
-        train_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, 
-                                  split='train', 
-                                  transform=transforms.Compose([
-                                            transforms.ToTensor(),
-                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
-                                  download=download)
+        if FLAGS.train_with_GaussianBlurr:
+            transform_train = transforms.Compose([
+                transforms.GaussianBlur(kernel_size=5, sigma=(1.0)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ])
+
+            train_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, split='train', transform=transform_train, download=download)
+
+        elif FLAGS.train_with_low_frequency:
+            transform_train = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                LowPass(),
+                ])
+            
+            train_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, split='train', transform=transform_train, download=download)
+
+
+        else:
+            train_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, 
+                                    split='train', 
+                                    transform=transforms.Compose([
+                                                transforms.ToTensor(),
+                                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
+                                            download=download)
+
 
         test_set = datasets.SVHN(FLAGS.dataset_path + FLAGS.dataset, 
-                                 split='test', 
-                                 transform=transforms.Compose([
+                                split='test', 
+                                transform=transforms.Compose([
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
-                                 download=download)
+                                download=download)
 
     # create loaders
     ## it is important NOT to shuffle the test dataset since the adversarial variation 

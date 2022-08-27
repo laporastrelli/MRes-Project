@@ -151,19 +151,21 @@ def main(argv):
     if FLAGS.adversarial_test and FLAGS.attenuate_HF:
         if get_bn_int_from_name(FLAGS.pretrained_name) != 100:
             already_exists = True
-    '''if FLAGS.adversarial_test and 'PGD' in FLAGS.attacks_in:
-        if FLAGS.dataset == 'SVHN' and FLAGS.use_pop_stats:
-            already_exists = False '''
+    if FLAGS.adversarial_test and 'FGSM' in FLAGS.attacks_in:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0]:
+            already_exists = True
     if FLAGS.adversarial_transferrability:
         print('Model ATTACKING: ', FLAGS.pretrained_name)
         print('Model ATTACKED: ', FLAGS.pretrained_name_to_attack)
+        if FLAGS.dataset == 'SVHN':
+            FLAGS.epsilon_in = FLAGS.epsilon_in[1:4]
         if str(FLAGS.pretrained_name) == str(FLAGS.pretrained_name_to_attack):
             already_exists = True 
             print('The two models are the same')
         else:
             print('Good to go!')
     if FLAGS.test_low_pass_robustness:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
             already_exists = True
     if len(FLAGS.prune_mode) > 0 :
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:

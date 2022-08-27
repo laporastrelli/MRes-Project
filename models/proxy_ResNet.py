@@ -287,23 +287,24 @@ class proxy_ResNet(nn.Module):
                     if self.bounded_lambda:
                         block.bn2.weight.data = block.bn2.weight.data.clamp(-torch.sqrt(block.bn2.running_var), torch.sqrt(block.bn2.running_var))
                     x = block.bn2(x)
-                x = block.activation_fn(x)
 
-                x = block.conv3(x)
-                if bn_mode: 
-                    if self.verbose:
-                        var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
-                        self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn3.weight**2))/block.bn3.running_var)
-                        self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
-                    if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
-                    if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
-                    if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn3 = nn.Sequential()
-                    bn_count += 1
-                    if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                        x = self.prune(block.bn3, x)
-                    if self.bounded_lambda:
-                        block.bn3.weight.data = block.bn3.weight.data.clamp(-torch.sqrt(block.bn3.running_var), torch.sqrt(block.bn3.running_var))
-                    x = block.bn3(x)
+                if self.run_name.find('ResNet18') == -1 and self.run_name.find('ResNet34') == -1:
+                    x = block.activation_fn(x)
+                    x = block.conv3(x)
+                    if bn_mode: 
+                        if self.verbose:
+                            var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
+                            self.capacity['BN_' + str(bn_count)] = ((var_test * (block.bn3.weight**2))/block.bn3.running_var)
+                            self.activations['BN_' + str(bn_count)] = (x).cpu().detach().numpy()
+                        if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
+                        if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
+                        if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn3 = nn.Sequential()
+                        bn_count += 1
+                        if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
+                            x = self.prune(block.bn3, x)
+                        if self.bounded_lambda:
+                            block.bn3.weight.data = block.bn3.weight.data.clamp(-torch.sqrt(block.bn3.running_var), torch.sqrt(block.bn3.running_var))
+                        x = block.bn3(x)
 
                 shortcut = list(block.shortcut)
                 if len(shortcut) > 0:
@@ -397,7 +398,7 @@ class proxy_ResNet(nn.Module):
                         self.BN_names.append('BN_' + str(layer_count) + '_' + str(bn_count_internal))
                         bn_count_internal += 1
 
-                if bn_mode: 
+                if bn_mode and (self.run_name.find('ResNet18') == -1 and self.run_name.find('ResNet34')) == -1: 
                     if self.regularization_mode == 'euclidean_total':
                         self.bn_parameters['BN_' + str(bn_count)] = block.bn3.weight
                     else:

@@ -100,7 +100,6 @@ def train(train_loader,
                 grad_clip = True
                 grad_clip_val = 0.1
             
-        
         if FLAGS.dataset == 'CIFAR100':
             opt_func = optim.SGD
             momentum=0.9
@@ -565,7 +564,7 @@ def train(train_loader,
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
                     regularizer = 0
-
+                
             opt.zero_grad()
             loss.backward()
 
