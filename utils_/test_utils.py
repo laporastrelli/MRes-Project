@@ -380,7 +380,7 @@ def get_layer_output(net,
 
     return test_layer_outputs
 
-def calculate_capacity(net, 
+def calculate_capacity(net,
                        model_path, 
                        run_name, 
                        test_loader,
@@ -397,9 +397,9 @@ def calculate_capacity(net,
                        regularization_mode='euclidean',
                        save_analysis=True, 
                        get_BN_names=False, 
-                       net_analysis=False, 
+                       net_analysis=True, 
                        distribution_analysis=False, 
-                       index_order_analysis=True,
+                       index_order_analysis=False,
                        get_bias=True):
     
     print('Calculating Capacity')
@@ -431,6 +431,7 @@ def calculate_capacity(net,
             path_out += eval_mode_str + '/' + attack +  '/capacity_regularization/capacity/' + capacity_mode + '/'
         else:
             path_out += eval_mode_str + '/' + attack +  '/capacity/' + capacity_mode + '/'
+
 
     # lambda-based capacity calculation
     if capacity_mode == 'lambda_based':
@@ -473,19 +474,41 @@ def calculate_capacity(net,
                     X, y = X.to(device), y.to(device)
 
                     net.set_verbose(verbose=True)
-                    _, capacities, _ = pgd_linf_capacity(net, 
-                                                        X, 
-                                                        y, 
-                                                        epsilon, 
-                                                        max_tensor, 
-                                                        min_tensor, 
-                                                        alpha=epsilon/10, 
-                                                        num_iter=num_iter, 
-                                                        layer_key=layer_key)
+                    if attack == 'Square':
+                        _ = net(X)
+                        initial_capacity = net.capacity
+                        version = 'custom'
+                        adversary = AutoAttack(net, 
+                                            norm='Linf', 
+                                            eps=epsilon, 
+                                            version=version,
+                                            device=device,
+                                            verbose=False,
+                                            min_tensor=min_tensor, 
+                                            max_tensor=max_tensor, 
+                                            n_queries=2000)
 
-                    net.set_verbose(verbose=False) 
+                        adversary.attacks_to_run = ['square']
+                        advimg = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), bs=X.size(0))
+                        final_capacity = net.capacity
+                    
+                    elif attack == 'PGD':
+                        _, capacities, _ = pgd_linf_capacity(net, 
+                                                            X, 
+                                                            y, 
+                                                            epsilon, 
+                                                            max_tensor, 
+                                                            min_tensor, 
+                                                            alpha=epsilon/10, 
+                                                            num_iter=num_iter, 
+                                                            layer_key=layer_key)
+                    net.set_verbose(verbose=False)
+
                     for chn, key_ in enumerate(layer_key):
-                        net_change[i, chn] = np.mean(capacities[key_][-1].numpy() - capacities[key_][0].numpy())
+                        if attack == 'PGD':
+                            net_change[i, chn] = np.mean(capacities[key_][-1].numpy() - capacities[key_][0].numpy())
+                        elif attack == 'Square':
+                            temp = np.mean(final_capacity[key_].numpy() - initial_capacity[key_][0].numpy())
             
             mean_net_change = np.mean(net_change, axis=0)
             var_net_change = np.var(net_change, axis=0)
@@ -507,15 +530,34 @@ def calculate_capacity(net,
                     X, y = X.to(device), y.to(device)
 
                     net.set_verbose(verbose=True)
-                    _, capacities, _ = pgd_linf_capacity(net, 
-                                                        X, 
-                                                        y, 
-                                                        epsilon, 
-                                                        max_tensor, 
-                                                        min_tensor, 
-                                                        alpha=epsilon/10, 
-                                                        num_iter=num_iter, 
-                                                        layer_key=layer_key)
+                    if attack == 'Square':
+                        _ = net(X)
+                        initial_capacity = net.capacity
+                        version = 'custom'
+                        adversary = AutoAttack(net, 
+                                            norm='Linf', 
+                                            eps=epsilon, 
+                                            version=version,
+                                            device=device,
+                                            verbose=False,
+                                            min_tensor=min_tensor, 
+                                            max_tensor=max_tensor, 
+                                            n_queries=2000)
+
+                        adversary.attacks_to_run = ['square']
+                        _ = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), bs=X.size(0))
+                        final_capacity = net.capacity
+                    
+                    elif attack == 'PGD':
+                        _, capacities, _ = pgd_linf_capacity(net, 
+                                                            X, 
+                                                            y, 
+                                                            epsilon, 
+                                                            max_tensor, 
+                                                            min_tensor, 
+                                                            alpha=epsilon/10, 
+                                                            num_iter=num_iter, 
+                                                            layer_key=layer_key)
                     net.set_verbose(verbose=False) 
 
                     path_to_save = path_out + 'all_layers/clean_test/distribution_analysis' + '/' 
@@ -532,7 +574,10 @@ def calculate_capacity(net,
                     keys_to_save = ['BN_' + str(i) for i in layers_to_save]
                     for chn, key_ in enumerate(layer_key):
                         if key_ in keys_to_save:
-                            temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+                            if attack == 'PGD':
+                                temp = capacities[key_][-1].numpy() - capacities[key_][0].numpy()
+                            elif attack == 'Square':
+                                temp = final_capacity[key_].numpy() - initial_capacity[key_][0].numpy()
 
                             path_to_save_file =  path_to_save + key_ + '/' 
                             if not os.path.isdir(path_to_save_file): os.mkdir(path_to_save_file)
@@ -540,7 +585,8 @@ def calculate_capacity(net,
                             np.save(path_to_save_file + 'diff_' + str(epsilon).replace('.', '') + '.npy', temp)
         
         elif index_order_analysis:
-            use_lambda = True
+            use_lambda = False
+
             if run_name.find('VGG') != -1:
                 layers_to_save = [0,1,2,5,8,10,12,15]
             else:
@@ -551,7 +597,7 @@ def calculate_capacity(net,
 
             path_out += 'all_layers/clean_test/index_order_analysis' + '/' 
             if not os.path.isdir(path_out): os.mkdir(path_out)
-            
+
             if use_lambda:
                 path_out += 'use_lambda' + '/'
                 if not os.path.isdir(path_out): os.mkdir(path_out)
@@ -566,22 +612,49 @@ def calculate_capacity(net,
                     X, y = X.to(device), y.to(device)
 
                     net.set_verbose(verbose=True)
-                    _, capacities, _ = pgd_linf_capacity(net, 
-                                                        X, 
-                                                        y, 
-                                                        epsilon, 
-                                                        max_tensor, 
-                                                        min_tensor, 
-                                                        alpha=epsilon/10, 
-                                                        num_iter=num_iter, 
-                                                        layer_key=layer_key)
+                    if attack == 'Square':
+                        _ = net(X)
+                        initial_capacity = net.capacity
+                        version = 'custom'
+                        adversary = AutoAttack(net, 
+                                            norm='Linf', 
+                                            eps=epsilon, 
+                                            version=version,
+                                            device=device,
+                                            verbose=False,
+                                            min_tensor=min_tensor, 
+                                            max_tensor=max_tensor, 
+                                            n_queries=2000)
+
+                        adversary.attacks_to_run = ['square']
+                        _ = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), bs=X.size(0))
+                        final_capacity_ = net.capacity
+                    
+                    elif attack == 'PGD':
+                        _, capacities, _ = pgd_linf_capacity(net, 
+                                                            X, 
+                                                            y, 
+                                                            epsilon, 
+                                                            max_tensor, 
+                                                            min_tensor, 
+                                                            alpha=epsilon/10, 
+                                                            num_iter=num_iter, 
+                                                            layer_key=layer_key)
                     net.set_verbose(verbose=False) 
 
                     for chn, key_ in enumerate(layer_key):
-                        sorted_idxs = torch.argsort(capacities[key_][0])
+                        if attack == 'PGD':
+                            sorted_idxs = torch.argsort(capacities[key_][0])
+                        elif attack == 'Square':
+                            sorted_idxs = torch.argsort(initial_capacity[key_])
                         if use_lambda:
                             sorted_idxs = torch.argsort(net.get_bn_parameters()[key_])
-                        final_capacity = capacities[key_][-1]
+
+                        if attack == 'PGD':
+                            final_capacity = capacities[key_][-1]
+                        elif attack == 'Square':
+                            final_capacity = final_capacity_[key_]
+
                         temp = final_capacity[sorted_idxs].numpy()
 
                         if batch > 1:
@@ -697,7 +770,7 @@ def channel_transfer(net,
                      epsilon_list, 
                      num_iter,
                      attack='PGD',
-                     channel_transfer='largest',
+                     channel_transfer='individual',
                      transfer_mode='frequency_based',
                      layer_to_test=0,
                      use_pop_stats=True, 
@@ -723,7 +796,7 @@ def channel_transfer(net,
 
     # get number of channels to transfer
     if channel_transfer in ['largest', 'smallest']: transfers = np.arange(9)
-    elif channel_transfer == 'individual': transfers = np.arange(0, channel_size, 9)
+    elif channel_transfer == 'individual': transfers = np.arange(0, channel_size, 1)
     print('Total number of channels to transfer: ', len(transfers))
 
     # create directory
@@ -766,54 +839,58 @@ def channel_transfer(net,
                 curr_key = str(run_name + '_' + str(epsilon))
                 if curr_key in csv_dict.keys():
                     if (len(csv_dict[curr_key]) == 9 and channel_transfer in ['smallest', 'largest']) or \
-                        (len(csv_dict[curr_key]) == 8 and channel_transfer=='individual'): 
+                        (len(csv_dict[curr_key]) == channel_size and channel_transfer=='individual'): 
                         print('------ KEY ALREADY FULL ------')
                         break
-                
+
                 # get adversarial activations
                 net.set_verbose(verbose=True)
                 _, capacities, adv_activations = pgd_linf_capacity(net, 
-                                                                   X, 
-                                                                   y, 
-                                                                   epsilon, 
-                                                                   max_tensor, 
-                                                                   min_tensor, 
-                                                                   alpha=epsilon/10, 
-                                                                   num_iter=num_iter, 
-                                                                   layer_key=layer_key)         
+                                                                X, 
+                                                                y, 
+                                                                epsilon, 
+                                                                max_tensor, 
+                                                                min_tensor, 
+                                                                alpha=epsilon/10, 
+                                                                num_iter=num_iter, 
+                                                                layer_key=layer_key)         
                 net.set_verbose(verbose=False)
 
-                # order channels based on transfer mode
-                if channel_transfer == 'largest' or channel_transfer == 'individual': descending = True
-                elif channel_transfer == 'smallest': descending = False
-                                            
-                if transfer_mode == 'capacity_based':
-                    tmp_capacity_idx = torch.argsort(torch.Tensor(np.array(capacities[layer_key[0]][-1]) \
-                                       - np.array(capacities[layer_key[0]][0])), descending=descending)
+                if get_bn_int_from_name(run_name) in [100, 1]:
+                    # order channels based on transfer mode
+                    if channel_transfer == 'largest' or channel_transfer == 'individual': descending = True
+                    elif channel_transfer == 'smallest': descending = False
+                                
+                    if transfer_mode == 'capacity_based':
+                        tmp_capacity_idx = torch.argsort(torch.Tensor(np.array(capacities[layer_key[0]][-1]) \
+                                        - np.array(capacities[layer_key[0]][0])), descending=descending)
 
-                elif transfer_mode == 'lambda_based':
-                    lambdas = net.get_bn_parameters()[layer_key[0]]
-                    tmp_capacity_idx = torch.argsort(lambdas, descending=descending)
+                    elif transfer_mode == 'lambda_based':
+                        lambdas = net.get_bn_parameters()[layer_key[0]]
+                        tmp_capacity_idx = torch.argsort(lambdas, descending=descending)
+                    
+                    elif transfer_mode == 'frequency_based':
+                        print('------------------------------------------------------')
+                        print(os.getcwd())
+                        if model_path.find('bitbucket')!= -1:
+                            tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
+                        else:
+                            tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
+
+                    # select channels (i.e. channels-corresponding channels) to transfer
+                    if channel_transfer in ['smallest', 'largest']:
+                        if int(n_channels) != 0:
+                            capacity_ch = tmp_capacity_idx[0:int(n_channels)*int((channel_size/8))].cpu().detach().numpy()
+                        else:
+                            capacity_ch = tmp_capacity_idx[0].cpu().detach().numpy()
+                    elif channel_transfer == 'individual':
+                        if transfer_mode == 'frequency_based':
+                            capacity_ch = tmp_capacity_idx[int(n_channels)]
+                        else:
+                            capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
                 
-                elif transfer_mode == 'frequency_based':
-                    print('------------------------------------------------------')
-                    print(os.getcwd())
-                    if model_path.find('bitbucket')!= -1:
-                        tmp_capacity_idx = np.load('./gpucluster/CIFAR10/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
-                    else:
-                        tmp_capacity_idx = np.load('./results/VGG19/eval/PGD/Gaussian_Parametric_frequency/MSE_CE/'+ run_name + '/layer_0/frequency_ordered_channels.npy')
-
-                # select channels (i.e. channels-corresponding channels) to transfer
-                if channel_transfer in ['smallest', 'largest']:
-                    if int(n_channels) != 0:
-                        capacity_ch = tmp_capacity_idx[0:int(n_channels)*int((channel_size/8))].cpu().detach().numpy()
-                    else:
-                        capacity_ch = tmp_capacity_idx[0].cpu().detach().numpy()
-                elif channel_transfer == 'individual':
-                    if transfer_mode == 'frequency_based':
-                        capacity_ch = tmp_capacity_idx[int(n_channels)]
-                    else:
-                        capacity_ch = tmp_capacity_idx[int(n_channels)].cpu().detach().numpy()
+                else:
+                    capacity_ch = n_channels
 
                 capacity_activations = adv_activations[layer_key[0]][-1][:, capacity_ch, :, :]
                 # print(capacity_ch, int(layer_key[0][-1]), capacity_activations.shape)
@@ -1454,8 +1531,8 @@ def saliency_map(model,
                  device, 
                  run_name,
                  eval_mode=True, 
-                 adversarial=False, 
-                 epsilon=0.0392, 
+                 adversarial=True, 
+                 epsilon=0.5, 
                  mode='max_loss'):
     
     print('Creating saliency maps')
@@ -1468,7 +1545,8 @@ def saliency_map(model,
                         eval_mode=eval_mode,
                         device=device,
                         run_name=run_name,
-                        noise_variance=0)
+                        noise_variance=0, 
+                        saliency_map=True)
     elif run_name.find('ResNet')!= -1:
         net = proxy_ResNet(model, 
                            eval_mode=eval_mode,
@@ -1479,144 +1557,170 @@ def saliency_map(model,
     if eval_mode: net.eval()
 
     X, y = next(iter(test_loader))
-    X, y = X.to(device), y.to(device) 
+    X, y = X.to(device), y.to(device)  
 
-    if adversarial:
-        min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
-        delta = pgd_linf(net, 
-                        X, 
-                        y, 
-                        epsilon, 
-                        max_tensor, 
-                        min_tensor,
-                        alpha=epsilon/10, 
-                        num_iter=40)
-        X = X + delta[0]   
-
-    if mode == 'max_score':
-        score = net(X)
-        pred_score, predicted = torch.max(score, 1)
-        max_score = torch.max(pred_score)
-    elif mode == 'max_loss':
-        score = net(X)
-        _, predicted = torch.max(score, 1)
-        loss = nn.CrossEntropyLoss()(net(X), y)
-
-    for j, _ in enumerate(X): 
-        print('IMAGE: ', j)
-        if j > 9: break
+    if not adversarial:
         if mode == 'max_score':
-            print('Mode: max-score')
-            if (not adversarial and predicted[j] == y[j]) or (adversarial and predicted[j] != y[j]):
-                score = net(X[j].unsqueeze(0))
-                pred_score = torch.max(score)
-                norm_score = pred_score/max_score
-                norm_score.backward(retain_graph=True)
-                if run_name.find('VGG')!=-1:
-                    saliency_map = torch.abs(net.bn1.grad.detach())
+            score = net(X)
+            pred_score, predicted = torch.max(score, 1)
+            max_score = torch.max(pred_score)
         elif mode == 'max_loss':
-            print('Mode: max-loss')
-            if (not adversarial and predicted[j] == y[j]) or (adversarial and predicted[j] != y[j]):
-                print('IN')
+            score = net(X)
+            _, predicted = torch.max(score, 1)
+            loss = nn.CrossEntropyLoss()(net(X), y)
+
+    for j, sample in enumerate(X): 
+        if j == 10: break
+        print('IMAGE: ', j)
+        
+        if not adversarial:
+            if mode == 'max_score':
+                print('Mode: max-score')
+                if (not adversarial and predicted[j] == y[j]) or (adversarial and predicted[j] != y[j]):
+                    score = net(X[j].unsqueeze(0))
+                    pred_score = torch.max(score)
+                    norm_score = pred_score/max_score
+                    norm_score.backward(retain_graph=True)
+                    if run_name.find('VGG')!=-1:
+                        saliency_map = torch.abs(net.bn1.grad.detach())
+            elif mode == 'max_loss':
+                print('Mode: max-loss')
+                if (not adversarial and predicted[j] == y[j]) or (adversarial and predicted[j] != y[j]):
+                    print('IN')
+                    loss.backward(retain_graph=True)
+                    if run_name.find('VGG')!=-1:
+                        print(net.bn1.grad.detach().size())
+                        saliency_map = torch.abs(net.bn1.grad.detach())
+        else:
+            alpha = epsilon/10
+            min_tensor, max_tensor = get_minmax(test_loader=test_loader, device=device)
+            sample = sample.unsqueeze(0)
+            label = y[j].unsqueeze(0)
+            delta = torch.zeros_like(sample, requires_grad=True)
+            for t in range(5):
+                loss = nn.CrossEntropyLoss()(net(sample + delta), label)
                 loss.backward(retain_graph=True)
-                if run_name.find('VGG')!=-1:
-                    saliency_map = torch.abs(net.bn1.grad.detach())
+                saliency_map = torch.abs(net.conv1.grad.detach())
+                print(saliency_map.size())
+                delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+                delta.data = torch.clamp(sample.data + delta.data, min=min_tensor, max=max_tensor) - sample.data
+                delta.grad.zero_()
 
-        root_path = './results/' + get_model_name(run_name) + '/'
+            score = net(sample + delta)
+            _, predicted = torch.max(score, 1)
+            if predicted != y[j]:
+                print('Adversary successful')
+                save = True
+            else:
+                print('Adversary unsuccessful')
 
-        if eval_mode: root_path += 'eval/'
-        else: root_path += 'no_eval/' 
-        
-        root_path += 'PGD' + '/' + 'saliency_maps/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+        if save:
+            root_path = './results/' + get_model_name(run_name) + '/'
 
-        if adversarial: root_path += 'adversarial/'
-        else: root_path += 'clean/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+            if eval_mode: root_path += 'eval/'
+            else: root_path += 'no_eval/' 
+            
+            root_path += 'PGD' + '/' + 'saliency_maps/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        root_path += mode +'/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+            if adversarial: root_path += 'adversarial/'
+            else: root_path += 'clean/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        if adversarial: root_path += str(epsilon).replace('.', '') + '/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+            root_path += mode + '/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        root_path += run_name + '/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+            if adversarial: root_path += str(epsilon).replace('.', '') + '/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        root_path += 'img_' + str(j) + '/'
-        if not os.path.isdir(root_path): os.mkdir(root_path)
+            root_path += run_name + '/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        if run_name.find('VGG')!= -1:
-            ch_max = torch.argsort(net.bn.weight, descending=True)[0]
-            ch_min = torch.argsort(net.bn.weight, descending=False)[0]
-        elif run_name.find('ResNet')!= -1:
-            ch_max = torch.argsort(net.bn1.weight, descending=True)[0]
-            ch_min = torch.argsort(net.bn1.weight, descending=False)[0]
-        chs = [ch_max, ch_min]
-        
-        inv_normalize = transforms.Normalize(
-            mean=[-0.4914/0.2023, -0.4822/0.1994, -0.4465/0.2010],
-            std=[1/0.2023, 1/0.1994, 1/0.2010])
+            root_path += 'img_' + str(j) + '/'
+            if not os.path.isdir(root_path): os.mkdir(root_path)
 
-        input_img = inv_normalize(X[j])
+            if run_name.find('VGG')!= -1:
+                ch_max = torch.argsort(net.bn.weight, descending=True)[0]
+                ch_min = torch.argsort(net.bn.weight, descending=False)[0]
+            elif run_name.find('ResNet')!= -1:
+                ch_max = torch.argsort(net.bn1.weight, descending=True)[0]
+                ch_min = torch.argsort(net.bn1.weight, descending=False)[0]
+            chs = [ch_max, ch_min]
+            
+            inv_normalize = transforms.Normalize(
+                mean=[-0.4914/0.2023, -0.4822/0.1994, -0.4465/0.2010],
+                std=[1/0.2023, 1/0.1994, 1/0.2010])
 
-        map_min = torch.min(saliency_map)    
-        map_max = torch.max(saliency_map)
+            input_img = inv_normalize(X[j])
 
-        for jj in range(saliency_map.size(1)):
-            if jj in chs:
-                if mode == 'max_score':
-                    temp = saliency_map[0, jj, :, :]
-                elif mode == 'max_loss':
-                    temp = saliency_map[j, jj, :, :]
-                temp_norm = (temp - map_min)/(map_max - map_min)
-                plt.figure()
-                if adversarial: plt.title('Advesarial Sample Saliency Map')
-                else: plt.title('Clean Sample Saliency Map')
-                plt.subplot(1, 3, 1)
-                plt.imshow(np.transpose(input_img.cpu().detach().numpy(), (1, 2, 0)))
-                plt.xticks([])
-                plt.yticks([])
-                plt.title('Original Sample')
-                plt.subplot(1, 3, 2)
-                if mode == 'max_score':
-                    plt.imshow(net.bn1[0, jj, :, :].cpu().detach().numpy())
-                elif mode == 'max_loss':
-                    plt.imshow(net.bn1[j, jj, :, :].cpu().detach().numpy())
-                plt.xticks([])
-                plt.yticks([])
-                plt.title('Channel Activation')
-                plt.subplot(1, 3, 3)
-                plt.imshow(temp_norm.cpu().numpy())
-                plt.xticks([])
-                plt.yticks([])
-                mode_str = mode.replace('_', '-')
-                plt.title('Saliency Map')
-                if jj == ch_max:
-                    plt.savefig(root_path + 'ch_max' + '.jpg')
-                elif jj == ch_min:
-                    plt.savefig(root_path + 'ch_min' + '.jpg')
-                plt.close()
+            
 
-        chns = [0, 7, 15, 25, 35, 45, 55, 63]
-        temp_count = 0
-        ordered_channels = torch.argsort(net.bn.weight, descending=False)
-        fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20,10))
-        axs = axs.ravel()
+            for jj in range(saliency_map.size(1)):
+                if jj in chs:
+                    if not adversarial:
+                        if mode == 'max_score':
+                            temp = saliency_map[0, jj, :, :]
+                        elif mode == 'max_loss':
+                            temp = saliency_map[j, jj, :, :]
+                    else: temp = saliency_map[0, jj, :, :]
 
-        if mode == 'max_loss':
-            for bb, ch_ in enumerate(ordered_channels):
-                if bb in chns:
-                    axs[temp_count].imshow(net.bn1[j, ch_, :, :].cpu().detach().numpy())
-                    axs[temp_count].set_xticks([])
-                    axs[temp_count].set_yticks([])
-                    axs[temp_count].set_title('Ordered Channel #' + str(bb))
-                    temp_count+= 1
-            fig.savefig(root_path + 'channels_' + '.jpg')
-        
-        # zero gradients for next steps
-        saliency_map.zero_()
+                    # map_min = torch.min(saliency_map)    
+                    # map_max = torch.max(saliency_map)
+                    # temp_norm = (temp - map_min)/(map_max - map_min)
 
+                    temp_norm = temp
+
+                    ######################################################################
+                    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(8,4))
+                    axes[0].imshow(np.transpose(input_img.cpu().detach().numpy(), (1, 2, 0)))
+                    axes[0].set_xticks([])
+                    axes[0].set_yticks([])
+                    axes[0].set_title('Original Sample')
+                    ######################################################################
+                    if mode == 'max_score':
+                        axes[1].imshow(net.bn1[0, jj, :, :].cpu().detach().numpy())
+                    elif mode == 'max_loss':
+                        img_1 = axes[1].imshow(net.conv1[0, jj, :, :].cpu().detach().numpy())
+                        plt.colorbar(img_1, fraction=0.046, pad=0.04, ax=axes[1])
+                    axes[1].set_xticks([])
+                    axes[1].set_yticks([])
+                    axes[1].set_title('Channel Activation')
+                    ######################################################################
+                    img_2 = axes[2].imshow(temp_norm.cpu().numpy())
+                    plt.colorbar(img_2, fraction=0.046, pad=0.04, ax=axes[2])
+                    axes[2].set_xticks([])
+                    axes[2].set_yticks([])
+                    axes[2].set_title('Saliency Map')
+                    ######################################################################
+                    if adversarial: plt.suptitle('Advesarial Sample Saliency Map', fontsize=14, y=0.95)
+                    else: plt.suptitle('Clean Sample Saliency Map')
+                    fig.tight_layout()
+                    if jj == ch_max:
+                        fig.savefig(root_path + 'ch_max' + '.jpg')
+                    elif jj == ch_min:
+                        fig.savefig(root_path + 'ch_min' + '.jpg')
+                    plt.close()
+                    ######################################################################
+
+            chns = [0, 7, 15, 25, 35, 45, 55, 63]
+            temp_count = 0
+            ordered_channels = torch.argsort(net.bn.weight, descending=False)
+            fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20,10))
+            axs = axs.ravel()
+
+            if mode == 'max_loss':
+                for bb, ch_ in enumerate(ordered_channels):
+                    if bb in chns:
+                        axs[temp_count].imshow(net.conv1[0, ch_, :, :].cpu().detach().numpy())
+                        axs[temp_count].set_xticks([])
+                        axs[temp_count].set_yticks([])
+                        axs[temp_count].set_title('Ordered Channel #' + str(bb))
+                        temp_count+= 1
+                fig.savefig(root_path + 'channels_' + '.jpg')
+            
+            # zero gradients for next steps
+            saliency_map.zero_()
+    
 def cross_model_testing(file_name, 
                         mode, 
                         root_path,
@@ -1838,7 +1942,8 @@ def get_frequency_images(model,
                          frequency_radius=[i for i in range(2,16)], 
                          visualization=False, 
                          mse_comparison=True, 
-                         use_conv=False):
+                         use_conv=False, 
+                         global_analysis=True):
     '''
     input(s):
         - model
@@ -1851,6 +1956,8 @@ def get_frequency_images(model,
         - qualitative average distance comparison
 
     '''
+
+    print('Layer to test: ', layer_to_test)
     
     # load model
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
@@ -1869,7 +1976,8 @@ def get_frequency_images(model,
                            eval_mode=eval_mode,
                            device=device,
                            run_name=run_name,
-                           noise_variance=0) 
+                           noise_variance=0, 
+                           layer_to_test=layer_to_test) 
 
     # set eval mode for inference 
     if eval_mode: model.eval()
@@ -1891,7 +1999,7 @@ def get_frequency_images(model,
     for r, radius in enumerate(frequency_radius):
 
         print('Radius: ', r)
-    
+
         # get high and low frequency images for the given batch
         low_f_img, high_f_img = generateDataWithDifferentFrequencies_3Channel(X.cpu().numpy(), radius)
 
@@ -1920,6 +2028,8 @@ def get_frequency_images(model,
             else:
                 activations = model.bn_frequency_activation
 
+            print('-------------------------:', activations.size())
+
             # feed low-frequency sample and get corresponding activations 
             _ = model(low_f_img)
             if use_conv:
@@ -1934,11 +2044,8 @@ def get_frequency_images(model,
             else:
                 activations_high = model.bn_frequency_activation
 
-            if run_name.find('ResNet') != -1: 
-                ordered_channels = torch.argsort(model.net.bn1.weight.cpu().detach(), descending=False)
-            else: 
-                lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
-                ordered_channels = torch.argsort(lambdas, descending=False)
+            lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+            ordered_channels = torch.argsort(lambdas, descending=False)
 
             chns = [0, 7, 15, 25, 35, 45, 55, 63]
 
@@ -2126,7 +2233,9 @@ def get_frequency_images(model,
 
         fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20,10))
         axs = axs.ravel()
-        chns = [0, 7, 15, 25, 35, 45, 55, 63]
+        # chns = [0, 7, 15, 25, 35, 45, 55, 63]
+        # number_of_channels = model.get_bn_parameters()['BN_' + str(layer_to_test)].size()
+        # chns = np.arange(0, number_of_channels, int(number_of_channels/8))
         for cnt in range(len(chns)):
             axs[cnt].plot(np.transpose(np.arange(2,16,1)), low_f_comparison[chns[cnt], :], label='Low-Frequency')
             axs[cnt].plot(np.transpose(np.arange(2,16,1)), high_f_comparison[chns[cnt], :], label='High-Frequency')
@@ -2183,7 +2292,13 @@ def IB_noise_calculation(model,
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         else: 
             noise_length = n_channels[int(layer_to_test)]
-        model.noise_std = 0. + torch.zeros(noise_length, device=device, requires_grad=True) 
+        
+        if layer_to_test in [8, 12]:
+            additional_noise = 0.75
+        else:
+            additional_noise = 0.
+        
+        model.noise_std = additional_noise + torch.zeros(noise_length, device=device, requires_grad=True) 
 
         # get channel variance
         if get_bn_int_from_name(run_name) in [100, 1]: 
@@ -2526,12 +2641,14 @@ def get_parametric_frequency(model,
 
         
     elif run_name.find('ResNet')!= -1:
+        n_channels = [64]
         model = proxy_ResNet(model, 
                              eval_mode=eval_mode,
                              device=device,
                              run_name=run_name,
                              noise_variance=0, 
-                             IB_noise_calculation=True, 
+                             IB_noise_calculation=False,
+                             get_parametric_frequency_MSE_CE=True,
                              layer_to_test=int(layer_to_test))
     
     # initiate noise tensor (specific to first channel)
@@ -2611,7 +2728,7 @@ def get_parametric_frequency(model,
 
     fig = plt.figure()
     running_var = model.get_running_variance()['BN_' + str(layer_to_test)].cpu()
-    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].cpu()
     plt.scatter(lambdas, lambdas/torch.sqrt(running_var))
     plt.xlabel(r'$\lambda$' + '-values')
     plt.ylabel(r'$\lambda - \sigma$' + ' ratio')
@@ -2658,7 +2775,7 @@ def get_parametric_frequency(model,
             # track noise evolution
             if i==0:
                 if get_bn_int_from_name(run_name) in [100, 1]: 
-                    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)]
+                    lambdas = model.get_bn_parameters()['BN_' + str(layer_to_test)].cpu()
                     sorted_lambdas = torch.argsort(lambdas, descending=True)
                     sorted_lambdas_values, _ = torch.sort(lambdas, descending=True)  
                     if use_scaling:
@@ -2701,6 +2818,8 @@ def get_parametric_frequency(model,
 
                 plt.title('Channel Frequency Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+                
+                fig.tight_layout()
 
                 fig.savefig(root_path + 'gaussian_noise_std.jpg')
                 if os.path.isfile(root_path + 'gaussian_noise_std.jpg'):
@@ -2763,6 +2882,8 @@ def get_parametric_frequency(model,
                 
                 plt.title('Channel Frequency Allowance - ' + run_name.split('_')[0] + ' ' + 'Layer-' + str(layer_to_test))
                 plt.subplots_adjust(left=0.12, right=0.88, top=0.9, bottom=0.1)
+
+                fig.tight_layout()
 
                 fig.savefig(root_path + 'gaussian_noise_std_averaged.jpg')
                 if os.path.isfile(root_path + 'gaussian_noise_std_averaged.jpg'):
@@ -2880,6 +3001,8 @@ def test_low_pass_robustness(model,
     correct_clean = 0
 
     for i, data in enumerate(test_loader, 0):
+        if i == 16:
+            break
         X, y = data
         X, y = X.to(device), y.to(device)
 
@@ -2891,15 +3014,31 @@ def test_low_pass_robustness(model,
         
         if not os.path.isfile(path + name_out):
             # perform PGD
-            delta = pgd_linf(model, 
-                             X, 
-                             y, 
-                             epsilon, 
-                             max_tensor, 
-                             min_tensor,
-                             alpha=epsilon/10, 
-                             num_iter=num_iter, 
-                             noise_injection=False) 
+            if attack == 'PGD':
+                delta = pgd_linf(model, 
+                                X, 
+                                y, 
+                                epsilon, 
+                                max_tensor, 
+                                min_tensor,
+                                alpha=epsilon/10, 
+                                num_iter=num_iter, 
+                                noise_injection=False) 
+            elif attack == 'Square':
+                version = 'custom'
+                adversary = AutoAttack(model, 
+                                    norm='Linf', 
+                                    eps=epsilon, 
+                                    version=version,
+                                    device=device,
+                                    verbose=False,
+                                    min_tensor=min_tensor, 
+                                    max_tensor=max_tensor, 
+                                    n_queries=2000)
+
+                adversary.attacks_to_run = ['square']
+                advimg = adversary.run_standard_evaluation(X, y.type(torch.LongTensor).to(device), bs=X.size(0))
+                delta = [advimg - X]
 
             # save perturbations
             torch.save(delta[0], path + name_out)

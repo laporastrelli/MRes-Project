@@ -157,10 +157,18 @@ def get_csv_path(model_name):
     if len(os.listdir(csv_path_dir)) == 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '.csv'
+
+        if FLAGS.large_epsilon:
+            FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
+                            + 'results_' + eval_mode_str + '_' + acc_mode + '_large_epsilon.csv'
     
     elif len(os.listdir(csv_path_dir)) > 0:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
                             + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted' + '.csv'
+        
+        if FLAGS.large_epsilon:
+            FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \
+                            + 'results_' + eval_mode_str + '_' + acc_mode + '_adjusted_large_epsilon' + '.csv'
 
     if FLAGS.test_frequency:
         FLAGS.csv_path = csv_path_dir + model_name + '_' + FLAGS.dataset + '_' \

@@ -75,10 +75,11 @@ class proxy_VGG2(nn.Module):
     def forward(self, x, ch_activation=[], saliency_layer=''):
         bn_count = 0
 
-        self.conv1 = self.conv(x)            
-        self.bn1 = self.bn(self.conv1)
+        self.conv1 = self.conv(x)  
         if self.saliency_map:
-            self.bn1.retain_grad()
+            print('saliency map')
+            self.conv1.retain_grad()          
+        self.bn1 = self.bn(self.conv1)
         x = self.activation(self.bn1)
 
         for ii, model in enumerate(self.features):

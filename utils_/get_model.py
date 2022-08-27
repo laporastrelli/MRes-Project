@@ -3,7 +3,7 @@ from tkinter.tix import Tree
 from absl.flags import FLAGS
 from matplotlib import use
 import torchvision.models as models
-from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v3_SkipInit, VGG_scaled, ResNet_v1_Scaling, proxy_VGG_ln
+from models import ResNet_v1, ResNet_v2, ResNet_v3, VGG, noisy_VGG_train, proxy_VGG, proxy_ResNet, ResNet_v3_SkipInit, VGG_scaled, ResNet_v1_Scaling, proxy_VGG_ln, VGG_entropy_regularization
 from models.proxy_VGG3 import proxy_VGG3
 from utils_ import utils_flags
 
@@ -80,7 +80,9 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
         else:
             n_classes = 10
         if sum(where_bn)==0:
-            if FLAGS.use_scaling:
+            if FLAGS.regularization_mode == 'bn_entropic_regularization':
+                net = VGG_entropy_regularization.vgg19(entropic_regularization=True)
+            elif FLAGS.use_scaling:
                 net = VGG_scaled.vgg19(where_bn=where_bn, normalization=FLAGS.normalization, use_scaling=FLAGS.use_scaling)
             else:
                 net = VGG.vgg19(where_bn=where_bn, normalization=FLAGS.normalization, n_classes=n_classes)
@@ -104,15 +106,16 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
             net = noisy_VGG_train.noisy_VGG_train(net, FLAGS.train_noise_variance, FLAGS.device)
         
         if FLAGS.capacity_regularization:
-            print('Training/Testing with capacity regularization ...')
-            if model_name.find('VGG')!= -1:
-                net = proxy_VGG.proxy_VGG(net, 
-                                          eval_mode=FLAGS.use_pop_stats,
-                                          device=FLAGS.device,
-                                          noise_variance=FLAGS.noise_variance, 
-                                          run_name=run_name,
-                                          train_mode=FLAGS.train,
-                                          regularization_mode=FLAGS.regularization_mode)
+            if FLAGS.regularization_mode != 'bn_entropic_regularization':
+                print('Training/Testing with capacity regularization ...')
+                if model_name.find('VGG')!= -1:
+                    net = proxy_VGG.proxy_VGG(net, 
+                                            eval_mode=FLAGS.use_pop_stats,
+                                            device=FLAGS.device,
+                                            noise_variance=FLAGS.noise_variance, 
+                                            run_name=run_name,
+                                            train_mode=FLAGS.train,
+                                            regularization_mode=FLAGS.regularization_mode)
         
         if FLAGS.rank_init or FLAGS.track_rank:
             print('Training/Testing with rank-preserving initialization ...')
@@ -165,7 +168,10 @@ def get_model(model_name, where_bn, run_name='', train_mode=False):
                                 
     elif model_name == 'VGG16':
         if sum(where_bn)==0:
-            net = VGG.vgg16(where_bn=where_bn)
+            if FLAGS.regularization_mode == 'bn_entropic_regularization':
+                net = VGG_entropy_regularization.vgg16(entropic_regularization=True)
+            else:
+                net = VGG.vgg16(where_bn=where_bn)
         else:
             net = VGG.vgg16_bn(where_bn=where_bn)
         

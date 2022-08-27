@@ -191,7 +191,8 @@ def test(run_name,
                                         run_name,
                                         eval_mode=FLAGS.use_pop_stats, 
                                         layer_to_test=FLAGS.layer_to_test, 
-                                        frequency_radius=int(FLAGS.frequency_radius))
+                                        frequency_radius=int(FLAGS.frequency_radius), 
+                                        use_conv=FLAGS.use_conv)
 
     elif IB_noise_calculation:
         test_utils.IB_noise_calculation(net, 
@@ -214,7 +215,8 @@ def test(run_name,
                                             layer_to_test=FLAGS.layer_to_test,
                                             get_parametric_frequency_MSE_only=FLAGS.parametric_frequency_MSE,
                                             get_parametric_frequency_MSE_CE=FLAGS.parametric_frequency_MSE_CE,
-                                            capacity_regularization=FLAGS.capacity_regularization)
+                                            capacity_regularization=FLAGS.capacity_regularization,
+                                            use_scaling=FLAGS.use_bn_scaling)
     
     elif test_low_pass_robustness:
         PATH_to_deltas = FLAGS.root_path + '/deltas_new/'

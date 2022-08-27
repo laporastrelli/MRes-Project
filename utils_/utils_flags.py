@@ -100,6 +100,7 @@ flags.DEFINE_bool('free_lambda', False, 'train with bounded bounded constraint w
 flags.DEFINE_bool('uniform_lambda', False, 'train with uniform lambda')
 
 flags.DEFINE_bool('use_bn_scaling', False, 'test IB noise with BN scaling')
+flags.DEFINE_bool('use_conv', False, 'use convultional activations for frequency analysis')
 
 flags.DEFINE_bool('adversarial_transferrability', False, 'adversarial transferrability mode')
 flags.DEFINE_string('model_name_to_attack', '', 'pretrained model name in adversarial_transferrability mode') 
@@ -112,6 +113,8 @@ flags.DEFINE_bool('prune_mixed', False, 'prune model based on layer lambda value
 flags.DEFINE_bool('prune_random', False, 'prune model based on layer lambda value')
 
 flags.DEFINE_bool('track_capacity', False, 'decide or not whether to track the progression of lambda during training')
+
+flags.DEFINE_bool('large_epsilon', False, 'decide whether to test on large epsilon')
 
 flags.DEFINE_string('normalization', 'bn', 'normalization to use')
 flags.DEFINE_string('mode', None, 'training mode to use')

@@ -144,6 +144,8 @@ class proxy_VGG3(nn.Module):
             print('Training with gradient free adaptive lambda')
             self.set_gradient_mode()
         ###########################################
+
+        self.filter_type = 'low'
     
     def init_scale_layers(self):
         self.scale_layers = []
@@ -457,13 +459,16 @@ class proxy_VGG3(nn.Module):
             else:
                 return 1.0
 
-    def scaled_mask_radial(self, img, r, scale):
+    def scaled_mask_radial(self, img, r, scale, which):
         # first create location-based mask based on distance from the center of the image
         mask =  torch.zeros_like(img[0, 0, :, :])
         for i in range(img.size(2)):
             for j in range(img.size(3)):
                 mask[i, j] = self.scaled_distance(i, j, imageSize=img.size(2), r=r, scale=1)
         
+        if which == 'high':
+            mask = 1 - mask
+
         # reshape mask to have the same dimension as img
         mask = mask.view(1, 1, mask.size(0), mask.size(1)).expand(img.size())
         scaling = scale.view(1,-1, 1, 1).expand(img.size())
@@ -474,13 +479,12 @@ class proxy_VGG3(nn.Module):
 
         return scaled_mask
     
-    def HF_manipulation(self, Images, r, scale):
+    def HF_manipulation(self, Images, r, scale, which):
         # apply FFT
         fd = self.fftshift(Images)
-        #### TEST ####
-        #print(torch.equal(fd[0, 0, :, :], self.fftshift(Images[0, 0, :, :])))
+
         # get mask and apply it
-        mask = self.scaled_mask_radial(Images, r, scale)
+        mask = self.scaled_mask_radial(Images, r, scale, which)
         fd = fd * mask
 
         # apply IFFT

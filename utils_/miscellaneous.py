@@ -107,11 +107,16 @@ def set_eval_mode(net, use_pop_stats):
     if use_pop_stats:
         net.eval()
 
-def get_epsilon_budget(dataset):
+def get_epsilon_budget(dataset, large_epsilon=False):
 
     if dataset == 'CIFAR10' or dataset == 'CIFAR100':
         # 2/255, 5/255, 8/255, 10/255, 12/255, 16/255, 0.1, 0.2
         epsilon_in = [0.0392, 0.0980, 0.1565, 0.1961, 0.2352, 0.3137, 0.5, 1]
+
+        if large_epsilon:
+            epsilon_in = [5]
+            # epsilon_in = [1.25, 1.5, 1.75, 2, 2.5, 3.0, 3.5, 4.0, 4.5, 4.99]
+            # epsilon_in = [100, 10, 20, 30, 40, 50, 60, 70]
 
     # epsilon budget for SVHN
     if dataset == 'SVHN':
@@ -213,14 +218,41 @@ def nonzero_idx(tensor,axis,invalid_item =-1):
     indices = np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_item)
     return indices
 
-def entropy(iid_sample, which='K-L'):
+def entropy(iid_sample_in, which='K-L', device='cpu'):
     '''Kozachenko-Leonenko estimator for entropy
        based on a nearest-neighbour estimate. In 
        this function only 1-d vectors are considered.'''
-    if iid_sample.size(0) == 1:
-        iid_sample = iid_sample.reshape(iid_sample.size(1), 1)
+
+    if len(list(iid_sample_in.size())) == 4:
+        
+        print(iid_sample_in)
+
+        n_samples = iid_sample_in.size(0)
+        dim = iid_sample_in.size(1)
+        n_samples_size = int(n_samples/2)
+        dim_size = int(dim/2)
+        idx_samples = torch.randint(n_samples, size=(n_samples_size,))
+        idx_dim = torch.randint(n_samples, size=(dim_size,))
+        
+        iid_sample = iid_sample_in.view(n_samples, -1)
+        iid_sample = iid_sample[idx_samples, idx_dim]
+
+    elif iid_sample_in.size(0) == 1:
+        iid_sample = iid_sample_in.reshape(n_samples, 1)
+
     if which == 'K-L':
-        repeated_sample = iid_sample.repeat(iid_sample.size(0),1)
+        repeated_sample = iid_sample.unsqueeze(0).repeat(n_samples_size, 1, 1)
+        to_substract = iid_sample.unsqueeze(1).repeat(1, n_samples_size, 1)
+        diff = repeated_sample - to_substract
+        distance = torch.linalg.norm(diff, dim=2)
+        sorted_distance, _ = torch.sort(distance, descending=False)
+        print(sorted_distance)
+        distance_vector = sorted_distance[:, 1]
+        print(distance_vector)
+        volume_unit = torch.Tensor([mt.pi**(dim_size)/mt.gamma(dim_size + 1)]).to(device)
+        h = (1/n_samples_size)*torch.sum(torch.log(int(n_samples_size) * (distance_vector**(n_samples_size))) + torch.log(volume_unit) + 0.57721566490153286060)
+        print(h)
+
         to_substract = iid_sample.reshape([iid_sample.size(0), -1]).repeat(1, iid_sample.size(0))
         diff = torch.sqrt(torch.pow(repeated_sample - to_substract, 2))
         sorted_distances, _ = torch.sort(diff, dim=1)
@@ -229,9 +261,54 @@ def entropy(iid_sample, which='K-L'):
         print('MIN: ', torch.min(min_distances))
         print('SUM: ', min_distances.mean())
         print('Internal: ', torch.sum(iid_sample.size(0)*(torch.tensor(mt.pi)**(2))*min_distances))
-        h = (1/iid_sample.size(0))*torch.sum(torch.log(iid_sample.size(0)*(torch.tensor(mt.pi)**(2))*min_distances) + 0.57721566490153286060)
-        print(h)
+    
     elif which == 'gaussian':
         h = 1/2 * torch.log2(2*mt.pi*torch.var(iid_sample, unbiased=True)) + 1/2
 
     return h
+
+    
+
+    '''
+    if len(list(iid_sample_in.size())) == 4:
+        
+        print(iid_sample_in)
+
+        n_samples = iid_sample_in.size(0)
+        dim = iid_sample_in.size(1)
+        
+        
+        dim_size = int(dim/2)
+        rand_idx = torch.randint(n_samples, size=(dim_size,))
+        
+        iid_sample = iid_sample_in.view(dim, -1)
+        iid_sample = iid_sample[rand_idx, :]
+
+    elif iid_sample_in.size(0) == 1:
+        iid_sample = iid_sample_in.reshape(n_samples, 1)
+
+    if which == 'K-L':
+        repeated_sample = iid_sample.unsqueeze(0).repeat(dim_size, 1, 1)
+        to_substract = iid_sample.unsqueeze(1).repeat(1, dim_size, 1)
+        diff = repeated_sample - to_substract
+        distance = torch.linalg.norm(diff, dim=2)
+        sorted_distance, _ = torch.sort(distance, descending=False)
+        print(sorted_distance)
+        distance_vector = sorted_distance[:, 1]
+        print(distance_vector)
+        volume_unit = torch.Tensor([mt.pi**(dim/2)/mt.gamma(dim/2 + 1)]).to(device)
+        h = (1/dim_size)*torch.sum(torch.log(int(dim_size) * (distance_vector**(dim_size))) + torch.log(volume_unit) + 0.57721566490153286060)
+        print(h)
+
+        to_substract = iid_sample.reshape([iid_sample.size(0), -1]).repeat(1, iid_sample.size(0))
+        diff = torch.sqrt(torch.pow(repeated_sample - to_substract, 2))
+        sorted_distances, _ = torch.sort(diff, dim=1)
+        positive_idxs = nonzero_idx(sorted_distances.numpy(), axis=1)
+        min_distances = sorted_distances[:, positive_idxs]
+        print('MIN: ', torch.min(min_distances))
+        print('SUM: ', min_distances.mean())
+        print('Internal: ', torch.sum(iid_sample.size(0)*(torch.tensor(mt.pi)**(2))*min_distances))
+        '''
+        # h = (1/iid_sample.size(0))*torch.sum(torch.log(iid_sample.size(0)) (torch.tensor(mt.pi)**(2))*min_distances) + 0.57721566490153286060)'''
+    
+    

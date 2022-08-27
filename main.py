@@ -51,7 +51,7 @@ def main(argv):
 
     ####################################### EPSILON BUDGET #######################################
     # retrive dataset-corresponding epsilon budget
-    FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset)
+    FLAGS.epsilon_in = get_epsilon_budget(dataset=FLAGS.dataset, large_epsilon=FLAGS.large_epsilon)
     # retrieve noisy-mode-corresponding epsilon budget
     if FLAGS.test_noisy: 
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
@@ -59,14 +59,11 @@ def main(argv):
             already_exists = True
     # retrieve eval-mode-corresponding epsilon budget
     if FLAGS.adversarial_test: 
-        if FLAGS.use_pop_stats:
+        if FLAGS.use_pop_stats and not FLAGS.large_epsilon:
             FLAGS.epsilon_in = FLAGS.epsilon_in[0:4]
     # retrieve frequency-mode-corresponding epsilon budget
     if FLAGS.test_low_pass_robustness:
         FLAGS.epsilon_in = FLAGS.epsilon_in[0:5]
-    # retrieve adversarial_transferrability-mode-corresponding epsilon budget
-    if FLAGS.adversarial_transferrability:
-        FLAGS.epsilon_in = [FLAGS.epsilon_in[0]]
     ################################################################################################
 
     ####################################### Logistics #############################################
@@ -119,7 +116,7 @@ def main(argv):
 
     # carry out channel transfer only for full-BN configs
     if len(FLAGS.channel_transfer)>0:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [5]: 
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0]: 
             already_exists = True
     if FLAGS.capacity_calculation:
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
@@ -137,7 +134,7 @@ def main(argv):
         if get_bn_int_from_name(FLAGS.pretrained_name)!= 100: 
             already_exists = True
     if FLAGS.adversarial_test and not FLAGS.train:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
             already_exists = True 
         elif get_bn_int_from_name(FLAGS.pretrained_name) == 0 and not FLAGS.use_pop_stats:
             already_exists = True 
@@ -163,10 +160,16 @@ def main(argv):
         else:
             print('Good to go!')
     if FLAGS.test_low_pass_robustness:
-        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [0, 100]:
             already_exists = True
     if len(FLAGS.prune_mode) > 0 :
         if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]:
+            already_exists = True
+    if FLAGS.adversarial_test and FLAGS.large_epsilon:
+        if get_bn_int_from_name(FLAGS.pretrained_name) != 0:
+            already_exists = True
+    if FLAGS.get_saliency_map:
+        if get_bn_int_from_name(FLAGS.pretrained_name) not in [100]: 
             already_exists = True
 
     # display model info
@@ -188,7 +191,7 @@ def main(argv):
         print('RUN: ', not already_exists)
     
     ######################################################### OPERATIONS #########################################################
-
+    
     where_bn = bn_locations
     
     if FLAGS.train:
@@ -245,7 +248,7 @@ def main(argv):
             adv_accs = dict()
             for attack in FLAGS.attacks_in:
                 FLAGS.attack = attack
-                if attack == 'PGD' or attack == 'FGSM':
+                if attack == 'PGD' or attack == 'Square':
                     for eps in FLAGS.epsilon_in:
                         FLAGS.epsilon = float(eps)
                         dict_name = attack + '-' + str(FLAGS.epsilon)
@@ -270,7 +273,7 @@ def main(argv):
             adv_accs = dict()
             for attack in FLAGS.attacks_in:
                 FLAGS.attack = attack
-                if attack == 'PGD':
+                if attack in ['PGD', 'Square'] :
                     for eps in FLAGS.epsilon_in:
                         FLAGS.epsilon = float(eps)
                         FLAGS.radii_to_test = [16, 15, 14, 13, 12, 11, 10]

@@ -311,7 +311,7 @@ def train(train_loader,
             X,y = data
             X,y = X.to(device), y.to(device)
 
-            if FLAGS.capacity_regularization:
+            if FLAGS.capacity_regularization and FLAGS.regularization_mode != 'bn_entropic_regularization':
                 if model_name.find('VGG')!=-1:
                     model.set_verbose(verbose=True)
                 if FLAGS.regularization_mode == 'BN_once':
@@ -565,7 +565,16 @@ def train(train_loader,
                     regularizer = 0
                 elif FLAGS.regularization_mode == 'wandb_only':
                     regularizer = 0
-
+                elif FLAGS.regularization_mode == 'bn_entropic_regularization':
+                    if epoch_num < 1:
+                        regularizer = 0
+                    else:
+                        regularizer = None
+                        regularizer = entropy(model.bn_activation, which='K-L', device=FLAGS.device)
+                        regularizer = FLAGS.beta*(regularizer)
+                        print(regularizer.requires_grad)
+                        loss -= regularizer
+                
             opt.zero_grad()
             loss.backward()
 
@@ -742,6 +751,10 @@ def train(train_loader,
                     elif FLAGS.regularization_mode == 'BN_once':
                         model.set_iteration_num(iterations=i, epoch=1)
                         regularizer_val = 0
+                    elif FLAGS.regularization_mode == 'bn_entropic_regularization':
+                        regularizer_val = None
+                        regularizer_val = entropy(model.bn_activation, which='K-L')
+                        regularizer_val = FLAGS.beta*(regularizer_val)
 
                 valid_loss += loss.item()
                 valid_regularizer += regularizer_val

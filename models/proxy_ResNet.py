@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from zmq import device
+import math
 
 class proxy_ResNet(nn.Module):
     def __init__(self, 
@@ -15,6 +16,8 @@ class proxy_ResNet(nn.Module):
                 run_name='', 
                 IB_noise_calculation=False,
                 IB_noise_std=0,
+                get_parametric_frequency_MSE_CE=False,
+                gaussian_std=[0*i for i in range(64)],
                 layer_to_test=0,
                 saliency_map=False, 
                 train_mode=False, 
@@ -45,6 +48,8 @@ class proxy_ResNet(nn.Module):
         self.prune_mode = prune_mode
         self.prune_percentage = prune_percentage
 
+        print('Prune Percentage: ', self.prune_percentage)
+
         # saliency map mode
         self.saliency_map = saliency_map
 
@@ -56,9 +61,27 @@ class proxy_ResNet(nn.Module):
         self.IB_noise_std = IB_noise_std
         self.layer_to_test = layer_to_test
 
+        # parametric frequency MSE-CE
+        self.get_parametric_frequency_MSE_CE = get_parametric_frequency_MSE_CE
+
+        ############################
+        self.channels = len(gaussian_std)
+        self.gaussian_std = torch.FloatTensor(gaussian_std)
+        self.gaussian_std.requires_grad = True
+        self.ground_truth_activations = 0
+        self.gaussian_activations = 0
+        # self.conv_gaussian = nn.Conv2d(self.channels, self.channels, kernel_size=5, stride=1, padding=2, bias=False, groups=self.channels)
+        # self.conv_gaussian.weight.requires_grad = False
+        ############################
+
         ############################
         self.bn1_act = 0
         self.conv1_act = 0
+        ############################
+
+        ############################
+        self.conv_frequency_activation = 0
+        self.bn_frequency_activation = 0
         ############################
 
         if self.eval_mode:
@@ -200,7 +223,7 @@ class proxy_ResNet(nn.Module):
     def prune(self, bn_layer, x, mode='lambda'):
         lambdas = bn_layer.weight.detach().clone()
         how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
-
+        print('ZERO-CHANNELS: ', how_many_to_zero)
         if self.prune_mode == 'lambda':
             ordered_idxs = torch.argsort(lambdas, descending=False)
             x = x * (torch.where(lambdas > lambdas[ordered_idxs[how_many_to_zero]], 1., 0.).view(1, -1, 1, 1).expand(x.size()))
@@ -210,11 +233,65 @@ class proxy_ResNet(nn.Module):
         
         return x
 
+    def get_gaussian_kernel(self, kernel_size=5, channels=1):
+        channels = self.channels
+        conv_gaussian_kernel = torch.zeros(channels, 1, kernel_size, kernel_size).to(self.device)
+
+        for channel in range(channels):
+            # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
+            x_coord = torch.arange(kernel_size)
+            x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
+            y_grid = x_grid.t()
+            xy_grid = torch.stack([x_grid, y_grid], dim=-1).float().to(self.device)
+
+            mean = (kernel_size - 1)/2.
+
+            # Calculate the 2-dimensional gaussian kernel which is
+            # the product of two gaussian distributions for two different
+            # variables (in this case called x and y)
+            gaussian_kernel = (1./(2.*math.pi*self.gaussian_std[channel]**2)) *\
+                                torch.exp(-torch.sum((xy_grid - mean)**2., dim=-1) /\
+                                (2*self.gaussian_std[channel]**2))
+
+            # Make sure sum of values in gaussian kernel equals 1.
+            gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
+
+            # Reshape to 2d depthwise convolutional weight
+            conv_gaussian_kernel[channel, :, :, :] = gaussian_kernel.view(1, kernel_size, kernel_size)
+            conv_gaussian_kernel[channel, :, :, :] = gaussian_kernel.view(1, kernel_size, kernel_size)
+        
+        return conv_gaussian_kernel.to(self.device)
+
     def forward(self, x, ch_activation=[]):
         bn_count = 0
         # first conv layer 
         x = self.net.conv1(x)
+
+        if bn_count == self.layer_to_test:
+            self.conv_frequency_activation = x.detach().cpu()
+
         self.conv1_act = x.detach().clone()
+        
+        if self.get_parametric_frequency_MSE_CE and bn_count==self.layer_to_test:
+            # construct channel-wise gaussian-based convolutional layer
+            self.ground_truth_activations = x.detach().clone()
+            
+            # apply it
+            if self.layer_to_test == 0:
+                kernel_size = 5
+                padding = 2
+            else:
+                kernel_size = 3
+                padding = 1
+
+            self.gaussian_activations = F.conv2d(x, self.get_gaussian_kernel(), padding=2, groups=self.channels)
+
+            # calculate standard deviation gradient
+            self.gaussian_std.retain_grad()
+
+            # calculate convolution output gradient
+            self.gaussian_activations.retain_grad()
+
         # first BN layer (if existent)
         net_vars = [i for i in dir(self.net) if not callable(i)]
         if 'bn1' in net_vars: 
@@ -227,10 +304,17 @@ class proxy_ResNet(nn.Module):
             if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': self.net.bn1 = nn.Sequential()
             
             if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                x = self.prune(self.net.bn1, x)
+                x = self.prune(self.net.bn1, x, self.prune_mode)
             if self.bounded_lambda:
                 self.net.bn1.weight.data = self.net.bn1.weight.data.clamp(-torch.sqrt(self.net.bn1.running_var), torch.sqrt(self.net.bn1.running_var))
-            self.bn1_act = self.net.bn1(x)
+            
+            if self.get_parametric_frequency_MSE_CE and bn_count==self.layer_to_test:
+                # apply batch norm
+                self.bn1_act = self.net.bn1(self.gaussian_activations)
+            else:
+                self.bn1_act = self.net.bn1(x)
+                if bn_count == self.layer_to_test:
+                    self.bn_frequency_activation = x.detach().cpu()
 
             bn_count += 1  
             #print(self.net.bn1.weight.requires_grad)
@@ -256,6 +340,10 @@ class proxy_ResNet(nn.Module):
                 temp = x 
                 # re-construct block
                 x = block.conv1(x)
+
+                if bn_count == self.layer_to_test:
+                    self.conv_frequency_activation = x.detach().cpu()
+
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
@@ -264,15 +352,23 @@ class proxy_ResNet(nn.Module):
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn1 = nn.Sequential()
-                    bn_count += 1
                     if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                        x = self.prune(block.bn1, x)
+                        x = self.prune(block.bn1, x, self.prune_mode)
                     if self.bounded_lambda:
                         block.bn1.weight.data = block.bn1.weight.data.clamp(-torch.sqrt(block.bn1.running_var), torch.sqrt(block.bn1.running_var))
                     x = block.bn1(x)
+                    if bn_count == self.layer_to_test:
+                        self.bn_frequency_activation = x.detach().cpu()
+
+                    bn_count += 1
+
                 x = block.activation_fn(x)
 
                 x = block.conv2(x)
+
+                if bn_count == self.layer_to_test:
+                    self.conv_frequency_activation = x.detach().cpu()
+
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
@@ -281,15 +377,24 @@ class proxy_ResNet(nn.Module):
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn2 = nn.Sequential()
-                    bn_count += 1
+                    
                     if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                        x = self.prune(block.bn2, x)
+                        x = self.prune(block.bn2, x, self.prune_mode)
                     if self.bounded_lambda:
                         block.bn2.weight.data = block.bn2.weight.data.clamp(-torch.sqrt(block.bn2.running_var), torch.sqrt(block.bn2.running_var))
                     x = block.bn2(x)
+
+                    if bn_count == self.layer_to_test:
+                        self.bn_frequency_activation = x.detach().cpu()
+                    
+                    bn_count += 1
+
                 x = block.activation_fn(x)
 
                 x = block.conv3(x)
+
+                if bn_count == self.layer_to_test:
+                    self.conv_frequency_activation = x.detach().cpu()
                 if bn_mode: 
                     if self.verbose:
                         var_test = x.var([0, 2, 3], unbiased=False).to(self.device)
@@ -298,12 +403,17 @@ class proxy_ResNet(nn.Module):
                     if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                     if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                     if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': block.bn3 = nn.Sequential()
-                    bn_count += 1
+                    
                     if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                        x = self.prune(block.bn3, x)
+                        x = self.prune(block.bn3, x, self.prune_mode)
                     if self.bounded_lambda:
                         block.bn3.weight.data = block.bn3.weight.data.clamp(-torch.sqrt(block.bn3.running_var), torch.sqrt(block.bn3.running_var))
                     x = block.bn3(x)
+
+                    if bn_count == self.layer_to_test:
+                        self.bn_frequency_activation = x.detach().cpu()
+
+                    bn_count += 1
 
                 shortcut = list(block.shortcut)
                 if len(shortcut) > 0:
@@ -316,12 +426,20 @@ class proxy_ResNet(nn.Module):
                             if len(ch_activation)> 0: x = self.replace_activation(x, ch_activation, bn_count)
                             if self.IB_noise_calculation: x = self.inject_IB_noise(x, bn_count)
                             if int(self.num_iterations) > 0 and self.regularization_mode == 'BN_once': shortcut_layer = nn.Sequential()
-                            bn_count += 1
                             if len(self.prune_mode) > 0 and bn_count == self.layer_to_test:              
-                                x = self.prune(shortcut_layer, x)
+                                x = self.prune(shortcut_layer, x, self.prune_mode)
                             if self.bounded_lambda:
-                                shortcut_layer.weight.data = shortcut_layer.weight.data.clamp(-torch.sqrt(shortcut_layer.running_var), torch.sqrt(shortcut_layer.running_var))
+                                shortcut_layer.weight.data = shortcut_layer.weight.data.clamp(-torch.sqrt(shortcut_layer.running_var),\
+                                                             torch.sqrt(shortcut_layer.running_var))
                         temp = shortcut_layer(temp)
+                        if isinstance(shortcut_layer, torch.nn.modules.conv.Conv2d):
+                            if bn_count == self.layer_to_test:
+                                self.conv_frequency_activation = temp.detach().cpu()
+                        elif isinstance(shortcut_layer, torch.nn.modules.batchnorm.BatchNorm2d):
+                            if bn_count == self.layer_to_test:
+                                self.bn_frequency_activation = temp.detach().cpu()
+                            bn_count += 1
+                        
                 x = x + temp
                 
                 x = block.activation_fn(x)

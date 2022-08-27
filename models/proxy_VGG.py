@@ -49,6 +49,7 @@ class proxy_VGG(nn.Module):
         self.prune_percentage = prune_percentage
         self.layer_to_prune = layer_to_test
         self.num_iterations = 0
+        self.classifier_input = 0
 
         features = list(net.features)
         
@@ -129,8 +130,8 @@ class proxy_VGG(nn.Module):
             if isinstance(model, torch.nn.modules.conv.Conv2d):
                 x = model(x)
                 if self.verbose:
-                    #self.activations['BN_' + str(conv_count)] = x 
-                    pass
+                    self.activations['BN_' + str(conv_count)] = x 
+                    self.capacity['BN_' + str(conv_count)] = torch.zeros_like(x)
                 
                 if len(ch_activation)> 0 and self.get_bn_int_from_name() not in [100, 1]:
                     ch, bn_idx, activation = ch_activation
@@ -148,13 +149,11 @@ class proxy_VGG(nn.Module):
                 assert isinstance(self.features[ii-1], torch.nn.modules.conv.Conv2d), "Previous module should be Conv2d"
 
                 if self.verbose and self.get_bn_int_from_name() in [100, 1]:
-                    #self.activations['BN_' + str(bn_count)] = x
+                    self.activations['BN_' + str(bn_count)] = x
                     var_test = x.var([0, 2, 3], unbiased=False).to(self.device).detach()
-                    self.capacity['BN_' + str(bn_count)] = (var_test * (model.weight**2))/model.running_var
+                    self.capacity['BN_' + str(bn_count)] = ((var_test * (model.weight**2))/model.running_var).detach().cpu()
                     self.test_variance['BN_' + str(bn_count)] = var_test
                     self.test_mean['BN_' + str(bn_count)] = x.mean([0, 2, 3]).detach()
-                    '''if bn_count in [0,1,2,5,8,10,12,15]:
-                        print(((var_test * (model.weight**2))/model.running_var).mean())'''
                     
                 if len(ch_activation)> 0 and self.get_bn_int_from_name() in [100, 1]:
                     ch, bn_idx, activation = ch_activation
@@ -184,26 +183,21 @@ class proxy_VGG(nn.Module):
                         lambdas = model.weight.detach().clone()
                         how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
                         ordered_idxs = torch.argsort(lambdas, descending=False)
-
                         model.weight.data = model.weight.data * torch.where(lambdas > lambdas[ordered_idxs[how_many_to_zero]], 1., 0.)
-
-                        x = model(x)
-
-                        model.weight.data = lambdas
-
+                    
                     elif self.prune_mode == 'lambda_inverse':
                         lambdas = model.weight.detach().clone()
                         how_many_to_zero = int(lambdas.size(0) * (1-self.prune_percentage))
                         ordered_idxs = torch.argsort(lambdas, descending=True)
-
                         model.weight.data = model.weight.data * torch.where(lambdas < lambdas[ordered_idxs[how_many_to_zero]], 1., 0.)
 
-                        x = model(x)
+                x = model(x)
 
-                        model.weight.data = lambdas
-                
-                else:
-                    x = model(x)
+                if len(self.prune_mode)>0 and bn_count == self.layer_to_prune:
+                    model.weight.data = lambdas
+
+                elif self.regularization_mode == 'entropic_regularization':
+                    self.classifier_input = (x - model.bias)/model.weight
 
                 bn_count += 1
 
@@ -212,7 +206,7 @@ class proxy_VGG(nn.Module):
 
             if self.noise_variance != float(0):
                 x = x + torch.normal(0, float(self.noise_variance), size=x.size()).to(self.device)
-        
+
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         out = self.classifier(x)
