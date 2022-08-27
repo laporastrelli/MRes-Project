@@ -2303,7 +2303,6 @@ def IB_noise_calculation(model,
             noise_length = model.get_bn_parameters()['BN_' + str(layer_to_test)].size(0)
         else: 
             noise_length = n_channels[int(layer_to_test)]
-<<<<<<< HEAD
         
         if layer_to_test in [8, 12]:
             additional_noise = 0.75
@@ -2311,15 +2310,6 @@ def IB_noise_calculation(model,
             additional_noise = 0.
         
         model.noise_std = additional_noise + torch.zeros(noise_length, device=device, requires_grad=True) 
-=======
-
-        if run_name.find('VGG16')!= -1 and int(layer_to_test) in [1, 2, 5, 7]:
-            initial_noise = 0.5
-        else:
-            initial_noise = 0
-
-        model.noise_std = initial_noise + torch.zeros(noise_length, device=device, requires_grad=True) 
->>>>>>> 497862301048d894d2b8bebde591f33f18edc5ce
 
         # get channel variance
         if get_bn_int_from_name(run_name) in [100, 1]: 
